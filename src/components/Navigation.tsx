@@ -1,7 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
 import {
-
   Bars3Icon,
   XMarkIcon,
   UserCircleIcon,
@@ -108,7 +107,8 @@ export default function Navigation() {
           <div className="flex items-center gap-2">
             <img src="logo.png" className="h-12 w-12" alt="TO Maths Logo" />
             <span className="font-semibold text-lg text-blue-600">
-Thani Oruvan Maths            </span>
+              Thani Oruvan Maths{" "}
+            </span>
           </div>
 
           {/* MENU */}
@@ -122,15 +122,10 @@ Thani Oruvan Maths            </span>
             <NavLink to="/test-series" className={navLinkClass}>
               Test Series
             </NavLink>
-            
-            
-            
           </div>
 
           {/* RIGHT */}
           <div className="flex items-center gap-3 relative">
-           
-
             {/* ================= PROFILE / AVATAR ================= */}
             {user ? (
               <div ref={dropdownRef} className="relative">
@@ -138,7 +133,7 @@ Thani Oruvan Maths            </span>
                 <div
                   onClick={() => setDropdownOpen(!dropdownOpen)}
                   className={`h-10 w-10 rounded-full text-white flex items-center justify-center font-bold text-lg uppercase cursor-pointer transition-transform hover:scale-105 ${getAvatarColor(
-                    user.name || user.email || "U"
+                    user.name || user.email || "U",
                   )}`}
                 >
                   {getInitial()}
@@ -156,16 +151,12 @@ Thani Oruvan Maths            </span>
                       </p>
                     </div>
 
-                  
-
-                   
-
                     <div className="border-t">
                       <button
                         onClick={handleLogout}
                         className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors font-medium"
                       >
-                         Logout
+                        Logout
                       </button>
                     </div>
                   </div>
@@ -218,8 +209,6 @@ Thani Oruvan Maths            </span>
             >
               Test Series
             </NavLink>
-            
-            
 
             {/* Mobile User Section */}
             {user && (
