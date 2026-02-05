@@ -1,6 +1,5 @@
 import { CheckCircle, Lock } from "lucide-react";
 import { Link } from "react-router-dom";
-import ScrollToTop from "./ScrollToTop";
 
 interface CourseCardProps {
   course: {
@@ -64,8 +63,8 @@ export default function CourseCard({ course }: CourseCardProps) {
         )}
 
         {/* IMAGE – PERFECT SQUARE */}
-       {/* IMAGE – SAME SIZE AS COMPETITIVE EXAMS */}
-<div className="aspect-[16/9] w-full bg-gray-100 overflow-hidden">
+        {/* IMAGE – SAME SIZE AS COMPETITIVE EXAMS */}
+        <div className="aspect-[16/9] w-full bg-gray-100 overflow-hidden">
           <img
             src={course.image}
             alt={course.title}

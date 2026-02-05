@@ -1,226 +1,331 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  AlertCircle,
   Clock,
   IndianRupee,
-  ArrowLeft,
   CheckCircle,
+  ArrowLeft,
+  ShoppingCart,
+  XCircle,
+  AlertCircle,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
-/* CONFIG */
+/* ================= CONFIG ================= */
 const API_BASE = "https://xiadot.com/admin_maths/api";
 const RAZORPAY_KEY = "rzp_live_Remrhpj0npbETD";
 const DEFAULT_IMG = "/default-unit.png";
 const UPLOAD_BASE = "https://xiadot.com/admin_maths/uploads/";
 
+/* ================= TYPES ================= */
 interface Course {
   id: number;
   course_name: string;
   description: string;
   price: string;
   duration: string;
-  image?: string;
   image_url?: string | null;
 }
 
 interface ApiResponse {
-  courses?: Course[];
+  success: boolean;
+  courses: Course[];
+  message?: string;
 }
 
+/* ================= IMAGE HELPER ================= */
 const getImage = (course: Course) => {
-  const raw = course.image_url || course.image || "";
+  const raw = course.image_url || "";
   if (!raw) return DEFAULT_IMG;
-
   const filename = raw.split("/").pop();
   return filename ? UPLOAD_BASE + filename : DEFAULT_IMG;
 };
 
+/* ================= COMPONENT ================= */
 export default function CourseDetails() {
-  const { slug } = useParams<{ slug: string }>();
+  const { slug } = useParams();
   const navigate = useNavigate();
 
   const [course, setCourse] = useState<Course | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadingPage, setLoadingPage] = useState(true);
   const [loadingPay, setLoadingPay] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [rzpReady, setRzpReady] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<
+    "success" | "failed" | null
+  >(null);
 
   const paymentLock = useRef(false);
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
 
-  /* FETCH */
+  /* ================= FETCH COURSE ================= */
   useEffect(() => {
     const loadCourse = async () => {
-      if (!slug) return;
+      try {
+        if (!slug) throw new Error("Invalid page");
 
-      const id = slug.split("-")[0];
+        const id = slug.split("-")[0];
 
-      const res = await fetch(`${API_BASE}/get_courses.php`);
-      const json: ApiResponse = await res.json();
+        const res = await fetch(`${API_BASE}/get_courses.php`);
+        const json: ApiResponse = await res.json();
 
-      const found = json?.courses?.find(
-        (c) => String(c.id) === id
-      );
+        if (!json?.success) throw new Error("API error");
 
-      if (found) setCourse(found);
-      setLoading(false);
+        const found = json.courses.find((c) => String(c.id) === String(id));
+
+        if (!found) throw new Error("Course not found");
+
+        setCourse(found);
+      } catch (err: any) {
+        setErrorMsg(err.message);
+      } finally {
+        setLoadingPage(false);
+      }
     };
 
     loadCourse();
   }, [slug]);
 
-  /* BUY */
+  /* ================= LOAD RAZORPAY ================= */
+  useEffect(() => {
+    if ((window as any).Razorpay) {
+      setRzpReady(true);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+
+    script.onload = () => {
+      console.log("Razorpay loaded");
+      setRzpReady(true);
+    };
+
+    script.onerror = () => {
+      setErrorMsg("Payment gateway failed to load");
+    };
+
+    document.body.appendChild(script);
+  }, []);
+
+  /* ================= BUY NOW ================= */
   const handleBuyNow = async () => {
-    if (!course || !user?.id) return;
+    console.log("Buy clicked");
+
+    if (!course) return;
+
+    if (!user?.id) {
+      alert("Please login to continue");
+      return;
+    }
+
+    if (!rzpReady) {
+      alert("Payment gateway loading...");
+      return;
+    }
+
     if (paymentLock.current) return;
 
     paymentLock.current = true;
     setLoadingPay(true);
+    setErrorMsg("");
 
     try {
+      /* ⭐ Convert price to paise */
+      const amount = Number(course.price) * 100;
+
       const orderRes = await fetch(`${API_BASE}/create_order.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount: Number(course.price) * 100,
-        }),
+        body: JSON.stringify({ amount }),
       });
 
-      const orderData = await orderRes.json();
+      const order = await orderRes.json();
+      console.log("Order Response:", order);
+
+      if (!order?.success)
+        throw new Error(order?.message || "Order creation failed");
 
       const options = {
         key: RAZORPAY_KEY,
-        amount: orderData.amount,
+        amount: order.amount,
         currency: "INR",
         name: "TO Maths",
         description: course.course_name,
-        order_id: orderData.order_id,
+        order_id: order.order_id,
 
         handler: async (response: any) => {
-          await fetch(`${API_BASE}/verify-payment.php`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-              user_id: user.id,
-              course_id: course.id,
-            }),
-          });
+          console.log("Payment Response:", response);
 
-          alert("Payment Success");
-          setLoadingPay(false);
-          paymentLock.current = false;
+          try {
+            const verifyRes = await fetch(`${API_BASE}/verify-payment.php`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                ...response,
+                user_id: user.id,
+                course_id: course.id,
+              }),
+            });
+
+            const verify = await verifyRes.json();
+            console.log("Verify Response:", verify);
+
+            if (!verify?.success)
+              throw new Error("Payment verification failed");
+
+            setPaymentStatus("success");
+          } catch (err: any) {
+            setPaymentStatus("failed");
+            setErrorMsg(err.message);
+          } finally {
+            setLoadingPay(false);
+            paymentLock.current = false;
+          }
         },
+
+        modal: {
+          ondismiss: () => {
+            setPaymentStatus("failed");
+            setLoadingPay(false);
+            paymentLock.current = false;
+          },
+        },
+
+        theme: { color: "#2563eb" },
       };
 
       new (window as any).Razorpay(options).open();
-    } catch {
-      alert("Payment Failed");
+    } catch (err: any) {
+      console.error(err);
+      setPaymentStatus("failed");
+      setErrorMsg(err.message);
       setLoadingPay(false);
       paymentLock.current = false;
     }
   };
 
-  if (loading) return <div className="p-10">Loading...</div>;
+  /* ================= UI STATES ================= */
 
-  if (!course)
+  if (loadingPage)
     return (
-      <div className="p-10 text-red-600 flex gap-2">
-        <AlertCircle /> Course not found
+      <div className="min-h-screen flex items-center justify-center">
+        Loading course...
       </div>
     );
 
+  if (!course)
+    return (
+      <div className="min-h-screen flex items-center justify-center text-red-600 gap-2">
+        <AlertCircle />
+        {errorMsg || "Course not found"}
+      </div>
+    );
+
+  if (paymentStatus === "success")
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <CheckCircle size={90} className="text-green-600" />
+      </div>
+    );
+
+  if (paymentStatus === "failed")
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3">
+        <XCircle size={90} className="text-red-600" />
+        <p>{errorMsg || "Payment Failed"}</p>
+      </div>
+    );
+
+  /* ================= MAIN UI ================= */
+
   return (
-    <div className="w-full min-h-screen bg-[#eef3f8] p-6">
+    <div className="min-h-screen bg-[#eef5f4]">
+      {/* HEADER */}
+      <div className="bg-white shadow-sm py-4 px-6 flex items-center gap-3">
+        <button onClick={() => navigate(-1)}>
+          <ArrowLeft />
+        </button>
+        <h2 className="text-lg font-semibold">Back</h2>
+      </div>
 
-      <button
-        onClick={() => navigate(-1)}
-        className="flex items-center gap-2 mb-4"
-      >
-        <ArrowLeft size={18} /> Back
-      </button>
-
-      <div className="w-full bg-white rounded-2xl shadow-lg overflow-hidden grid md:grid-cols-2">
-
-        {/* LEFT IMAGE */}
-        <div className="w-full h-[450px] md:h-[600px]">
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="bg-white rounded-3xl shadow-md p-6 grid md:grid-cols-2 gap-8">
+          {/* IMAGE */}
           <img
             src={getImage(course)}
-            alt={course.course_name}
-            className="w-full h-full object-cover"
+            className="rounded-2xl w-full object-cover"
+            onError={(e) => (e.currentTarget.src = DEFAULT_IMG)}
           />
-        </div>
 
-        {/* RIGHT CONTENT */}
-        <div className="flex flex-col h-[600px] p-8">
+          {/* RIGHT CONTENT */}
+          <div className="flex flex-col justify-between">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">{course.course_name}</h1>
 
-          {/* TOP */}
-          <div>
-            <h1 className="text-3xl font-bold mb-2">
-              {course.course_name}
-            </h1>
+              <p className="text-gray-500 mb-6">{course.description}</p>
 
-            <p className="text-gray-500 mb-4">
-              {course.description}
-            </p>
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="bg-green-50 rounded-xl p-4">
+                  <p className="text-sm text-gray-500">PRICE</p>
+                  <div className="flex items-center gap-2 text-green-700 font-bold text-xl">
+                    <IndianRupee size={18} />
+                    {course.price}
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-green-50 p-4 rounded-xl">
-                <p className="text-sm text-gray-500">PRICE</p>
-                <p className="text-2xl font-bold text-green-700 flex items-center">
-                  <IndianRupee size={18} /> {course.price}
-                </p>
+                <div className="bg-gray-100 rounded-xl p-4">
+                  <p className="text-sm text-gray-500">DURATION</p>
+                  <div className="flex items-center gap-2 font-semibold">
+                    <Clock size={18} />
+                    {course.duration}
+                  </div>
+                </div>
               </div>
 
-              <div className="bg-blue-50 p-4 rounded-xl">
-                <p className="text-sm text-gray-500">DURATION</p>
-                <p className="text-lg font-semibold flex items-center gap-1">
-                  <Clock size={18} /> {course.duration}
-                </p>
+              <div className="bg-gray-50 rounded-xl p-5 mb-6">
+                <h3 className="font-semibold mb-3">What You'll Get:</h3>
+
+                <ul className="space-y-2 text-gray-600">
+                  <li className="flex gap-2">
+                    <CheckCircle className="text-green-600" size={18} />
+                    Complete topic-wise test series
+                  </li>
+
+                  <li className="flex gap-2">
+                    <CheckCircle className="text-green-600" size={18} />
+                    Comprehensive PDF study materials
+                  </li>
+
+                  <li className="flex gap-2">
+                    <CheckCircle className="text-green-600" size={18} />
+                    Instant access after payment
+                  </li>
+
+                  <li className="flex gap-2">
+                    <CheckCircle className="text-green-600" size={18} />
+                    Lifetime access to course materials
+                  </li>
+                </ul>
               </div>
             </div>
+
+            {/* BUY BUTTON */}
+            <button
+              onClick={handleBuyNow}
+              disabled={loadingPay}
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 disabled:opacity-60"
+            >
+              {loadingPay ? (
+                "Processing..."
+              ) : (
+                <>
+                  <ShoppingCart size={20} />
+                  Buy Now
+                </>
+              )}
+            </button>
           </div>
-
-          {/* WHAT YOU'LL GET */}
-          <div className="mt-6 bg-gray-100 rounded-xl p-5">
-            <h3 className="font-semibold mb-3">
-              What You'll Get:
-            </h3>
-
-            <ul className="space-y-2 text-gray-700">
-              <li className="flex items-center gap-2">
-                <CheckCircle className="text-green-600" size={18} />
-                Complete topic-wise test series
-              </li>
-
-              <li className="flex items-center gap-2">
-                <CheckCircle className="text-green-600" size={18} />
-                Comprehensive PDF study materials
-              </li>
-
-              <li className="flex items-center gap-2">
-                <CheckCircle className="text-green-600" size={18} />
-                Instant access after payment
-              </li>
-
-              <li className="flex items-center gap-2">
-                <CheckCircle className="text-green-600" size={18} />
-                Lifetime access to course materials
-              </li>
-            </ul>
-          </div>
-
-          {/* BUY BUTTON */}
-          <button
-            onClick={handleBuyNow}
-            disabled={loadingPay}
-            className="mt-auto w-full bg-blue-600 text-white py-4 rounded-xl font-semibold"
-          >
-            {loadingPay ? "Processing..." : "Buy Now"}
-          </button>
-
         </div>
       </div>
     </div>

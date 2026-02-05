@@ -99,6 +99,7 @@ export default function Navigation() {
     return "U";
   };
 
+  
   return (
     <>
       <nav className="bg-white border-b sticky top-0 z-50">
@@ -119,9 +120,20 @@ export default function Navigation() {
             <NavLink to="/paid-courses" className={navLinkClass}>
               Paid Courses
             </NavLink>
-            <NavLink to="/test-series" className={navLinkClass}>
-              Test Series
-            </NavLink>
+           <NavLink
+  to="/test-series"
+  onClick={(e) => {
+    console.log("Test Series link clicked",user);
+    if (!user) {
+      e.preventDefault(); // ⛔ Stop navigation
+      setEmailOpen(true); // ✅ Open login popup
+    }
+  }}
+  className={navLinkClass}
+>
+  Test Series
+</NavLink>
+
           </div>
 
           {/* RIGHT */}
@@ -202,13 +214,19 @@ export default function Navigation() {
             >
               Paid Courses
             </NavLink>
-            <NavLink
-              to="/test-series"
-              onClick={() => setMenuOpen(false)}
-              className="block py-2"
-            >
-              Test Series
-            </NavLink>
+           <NavLink
+  to="/test-series"
+  onClick={(e) => {
+    if (!user) {
+      e.preventDefault(); // ⛔ Stop navigation
+      setEmailOpen(true); // ✅ Open login popup
+    }
+  }}
+  className={navLinkClass}
+>
+  Test Series
+</NavLink>
+
 
             {/* Mobile User Section */}
             {user && (
