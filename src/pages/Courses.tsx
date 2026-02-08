@@ -1,42 +1,29 @@
-// =========================
-// Courses.tsx  (DB Integrated Version - Fixed Imports)
-// =========================
-
-import { useState, useEffect, ChangeEvent, FormEvent } from "react";
-import { Plus, Edit2, Trash2, Save, X } from "lucide-react";
+import { useEffect, useState, ChangeEvent, FormEvent } from "react";
 import axios from "axios";
+import { Plus, Edit2, Trash2, Save, X } from "lucide-react";
 
+const API = "https://xiadot.com/admin_maths/api";
 
-/* ---------- Types ---------- */
+/* ================= TYPES ================= */
+
+type Category = { id: string; category_name: string };
+type SubCategory = { id: string; category_id: string; name: string };
+type Exam = { id: string; exam_name: string };
+
 type Course = {
   id: number;
   course_name: string;
-  description?: string;
   price: string;
+  actual_price?: string;
   duration?: string;
   category_id?: string;
   subcategory_id?: string;
   exam_id?: string;
+  image?: string;
+  image_url?: string;
 };
 
-type CourseFormData = {
-  course_name: string;
-  description: string;
-  price: string;
-  duration: string;
-};
-
-type Category = { id: string; name: string };
-type SubCategory = { id: string; name: string; category_id: string };
-type Exam = { id: string; name: string; subcategory_id: string };
-
-type ExtendedCourseForm = CourseFormData & {
-  category_id: string;
-  subcategory_id: string;
-  exam_id: string;
-};
-
-function Courses() {
+export default function Courses() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubCategories] = useState<SubCategory[]>([]);
@@ -44,308 +31,335 @@ function Courses() {
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-const [filteredCourses, setFilteredCourses] = useState<Course[]>([]);
-const [selectedCategory, setSelectedCategory] = useState("");
-const [selectedCourse, setSelectedCourse] = useState("");
 
-  const [formData, setFormData] = useState<ExtendedCourseForm>({
+  const [formData, setFormData] = useState({
     course_name: "",
-    description: "",
     price: "",
+    actual_price: "",
     duration: "",
     category_id: "",
     subcategory_id: "",
     exam_id: "",
+    image: null as File | null,
   });
 
-  /* ---------- API BASE ---------- */
-  const API = "https://xiadot.com/admin_maths/api"; // change to your backend URL
+  /* ================= IMAGE ================= */
 
-  /* ---------- Loaders ---------- */
-  const loadCourses = async () => {
-  const res = await axios.get(`${API}/courses.php?action=list`);
-  setCourses(Array.isArray(res.data.data) ? res.data.data : []);
-};
+  const getImage = (course: Course) => {
+    if (course.image_url) return course.image_url;
 
+    if (course.image)
+      return `https://xiadot.com/admin_maths/uploads/${course.image}`;
 
- const loadCategories = async () => {
-  const res = await axios.get(`${API}/get_Category.php?action=list`);
-  setCategories(Array.isArray(res.data.data) ? res.data.data : []);
-};
+    return "https://xiadot.com/admin_maths/uploads/default.png";
+  };
 
-
-  const loadSubCategories = async () => {
-  const res = await axios.get(`${API}/get_subCategory.php?action=list`);
-  setSubCategories(Array.isArray(res.data.data) ? res.data.data : []);
-};
-
-
-
-const loadExams = async () => {
-  const res = await axios.get(`${API}/exam.php?action=list`);
-  setExams(Array.isArray(res.data.data) ? res.data.data : []);
-};
-
+  /* ================= LOAD DATA ================= */
 
   useEffect(() => {
-    loadCourses();
-    loadCategories();
-    loadSubCategories();
-    loadExams();
+    loadAll();
   }, []);
 
-//   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-//   const categoryId = e.target.value;
-//   setSelectedCategory(categoryId);
+  const loadAll = async () => {
+    const [courseRes, catRes, examRes] = await Promise.all([
+      axios.get(`${API}/courses.php?action=list`),
+      axios.get(`${API}/get_Category.php?action=list`),
+      axios.get(`${API}/exam.php?action=list`),
+    ]);
 
-//   const filtered = courses.filter(
-//     (course) => String(course.category_id) === String(categoryId)
-//   );
+    setCourses(courseRes.data.data || []);
+    setCategories(catRes.data.data || []);
+    setExams(examRes.data.data || []);
+  };
 
-//   setFilteredCourses(filtered);
-// };
-// ✅ EXAM FILTER HANDLER
-const handleExamChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-  const examId = e.target.value;
+  /* ================= LOAD SUBCATEGORY ================= */
 
-  const filtered = courses.filter(
-    (course) => String(course.exam_id) === String(examId)
-  );
+  const loadSubCategories = async (category_id: string) => {
+    if (!category_id) {
+      setSubCategories([]);
+      return;
+    }
 
-  setFilteredCourses(filtered);
-};
+    const res = await axios.get(
+      `${API}/get_subCategory.php?action=list&category_id=${category_id}`
+    );
 
+    setSubCategories(res.data.data || []);
+  };
 
-  /* ---------- Handlers ---------- */
-  const handleInputChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
+  /* ================= FORM CHANGE ================= */
+
+  const handleChange = async (
+    e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
+
+    if (name === "category_id") {
+      setFormData((prev) => ({
+        ...prev,
+        category_id: value,
+        subcategory_id: "",
+      }));
+
+      await loadSubCategories(value);
+      return;
+    }
+
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const resetForm = () => {
-    setFormData({
-      course_name: "",
-      description: "",
-      price: "",
-      duration: "",
-      category_id: "",
-      subcategory_id: "",
-      exam_id: "",
-    });
-    setEditingId(null);
-    setShowForm(false);
+  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({
+      ...prev,
+      image: e.target.files?.[0] || null,
+    }));
   };
+
+  /* ================= SUBMIT ================= */
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
-    if (!formData.course_name || !formData.price || !formData.exam_id) {
-      alert("Fill all required fields");
-      return;
-    }
+    const fd = new FormData();
 
-    const payload = {
-      course_name: formData.course_name,
-      description: formData.description,
-      price: formData.price,
-      duration: formData.duration,
-      category_id: formData.category_id,
-      subcategory_id: formData.subcategory_id,
-      exam_id: formData.exam_id,
-    };
+    Object.entries(formData).forEach(([k, v]) => {
+      if (v !== null && v !== "") {
+        fd.append(k, v as any);
+      }
+    });
 
     if (editingId) {
-      await axios.post(`${API}/update_course.php`, {
-        id: editingId,
-        ...payload,
-      });
+      fd.append("id", String(editingId));
+      await axios.post(`${API}/update_course.php`, fd);
     } else {
-      await axios.post(`${API}/add_course.php`, payload);
+      await axios.post(`${API}/add_course.php`, fd);
     }
 
     resetForm();
-    await loadCourses();
+    loadAll();
   };
 
-  const handleEdit = (course: Course) => {
+  /* ================= DELETE ================= */
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("Delete this course?")) return;
+
+    const fd = new FormData();
+    fd.append("id", String(id));
+
+    await axios.post(`${API}/delete_course.php`, fd);
+    loadAll();
+  };
+
+  /* ================= EDIT ================= */
+
+  const handleEdit = async (c: Course) => {
     setFormData({
-      course_name: course.course_name,
-      description: course.description || "",
-      price: course.price,
-      duration: course.duration || "",
-      category_id: course.category_id || "",
-      subcategory_id: course.subcategory_id || "",
-      exam_id: course.exam_id || "",
+      course_name: c.course_name,
+      price: c.price,
+      actual_price: c.actual_price || "",
+      duration: c.duration || "",
+      category_id: c.category_id || "",
+      subcategory_id: c.subcategory_id || "",
+      exam_id: c.exam_id || "",
+      image: null,
     });
-    setEditingId(course.id);
+
+    if (c.category_id) {
+      await loadSubCategories(c.category_id);
+    }
+
+    setEditingId(c.id);
     setShowForm(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm("Delete this course?")) {
-      await axios.post(`${API}/delete_course.php`, { id });
-      loadCourses();
-    }
+  const resetForm = () => {
+    setEditingId(null);
+    setShowForm(false);
+
+    setFormData({
+      course_name: "",
+      price: "",
+      actual_price: "",
+      duration: "",
+      category_id: "",
+      subcategory_id: "",
+      exam_id: "",
+      image: null,
+    });
   };
+
+  /* ================= UI ================= */
 
   return (
     <div className="p-6">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Courses Management</h1>
+
+      <div className="flex justify-between mb-6">
+        <h1 className="text-3xl font-bold">Courses</h1>
+
         <button
           onClick={() => setShowForm(!showForm)}
-          className="bg-blue-500 text-white px-4 py-2 rounded-lg flex gap-2"
+          className="bg-blue-600 text-white px-4 py-2 rounded flex gap-2"
         >
-          {showForm ? <X /> : <Plus />} {showForm ? "Cancel" : "Add Course"}
+          {showForm ? <X /> : <Plus />} Add Course
         </button>
       </div>
 
-      {/* Form */}
+      {/* ================= FORM ================= */}
+
       {showForm && (
-        <form
-          onSubmit={handleSubmit}
-          className="bg-white p-6 rounded-lg shadow mb-6"
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input
-              name="course_name"
-              value={formData.course_name}
-              onChange={handleInputChange}
-              placeholder="Course Name"
-              className="border p-2 rounded"
-              required
-            />
+        <form onSubmit={handleSubmit} className="bg-white p-6 rounded shadow mb-6">
 
-            <input
-              name="price"
-              value={formData.price}
-              onChange={handleInputChange}
-              placeholder="Price"
-              className="border p-2 rounded"
-              required
-            />
-
-            <input
-              name="duration"
-              value={formData.duration}
-              onChange={handleInputChange}
-              placeholder="Duration"
-              className="border p-2 rounded"
-            />
-
-            {/* Category */}
-            {/* Category */}
-<select
-  name="category_id"
-  value={formData.category_id}
-  onChange={(e) => {
-    handleInputChange(e);      // formData update
-    handleCategoryChange(e);   // course filter
-  }}
-  className="border p-2 rounded"
-  required
->
-  <option value="">Select Category</option>
-  {/* {categories.map((c) => (
-    <option key={c.id} value={c.id}>
-      {c.name}
-    </option>
-  ))} */}
-  <option value="arithmetics">arithmetics</option>
-  <option value="algebra">algebra</option>
-  <option value="geometry">geometry</option>
-</select>
-
-
-            {/* SubCategory */}
-            <select
-              name="subcategory_id"
-              value={formData.subcategory_id}
-              onChange={handleInputChange}
-              className="border p-2 rounded"
-              required
-            >
-              <option value="">Select SubCategory</option>
-              {/* {subcategories
-                .filter((sc) => sc.category_id === formData.category_id)
-                .map((sc) => (
-                  <option key={sc.id} value={sc.id}>
-                    {sc.name}
-                  </option>
-                ))} */}
-              <option value="basic">age</option>
-              <option value="advanced">profit</option>
-
-            </select>
-
-            {/* Exam */}
-            <select
-              name="exam_id"
-              value={formData.exam_id}
-              onChange={handleInputChange}
-              className="border p-2 rounded"
-              required
-            >
-              <option value="">Select Exam</option>
-              {/* {exams
-                .filter((ex) => ex.subcategory_id === formData.subcategory_id)
-                .map((ex) => (
-                  <option key={ex.id} value={ex.id}>
-                    {ex.name}
-                  </option>
-                ))} */}
-                <option value="IMO - International Mathematics Olympiad">IMO - International Mathematics Olympiad</option>
-                <option value="12312">12312</option>
-            </select>
-          </div>
-
-          <textarea
-            name="description"
-            value={formData.description}
-            onChange={handleInputChange}
-            placeholder="Description"
-            className="border p-2 rounded w-full mt-4"
+          <input
+            name="course_name"
+            value={formData.course_name}
+            onChange={handleChange}
+            placeholder="Course Name"
+            className="border p-2 rounded w-full mb-3"
           />
 
-          <div className="mt-4">
-            <button className="bg-green-600 text-white px-4 py-2 rounded flex gap-2">
-              <Save /> {editingId ? "Update Course" : "Add Course"}
-            </button>
-          </div>
+          <select
+            name="category_id"
+            value={formData.category_id}
+            onChange={handleChange}
+            className="border p-2 rounded w-full mb-3"
+          >
+            <option value="">Select Category</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.category_name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            name="subcategory_id"
+            value={formData.subcategory_id}
+            onChange={handleChange}
+            className="border p-2 rounded w-full mb-3"
+          >
+            <option value="">Select SubCategory</option>
+            {subcategories.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            name="exam_id"
+            value={formData.exam_id}
+            onChange={handleChange}
+            className="border p-2 rounded w-full mb-3"
+          >
+            <option value="">Select Exam</option>
+            {exams.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.exam_name}
+              </option>
+            ))}
+          </select>
+
+          <input
+            name="duration"
+            value={formData.duration}
+            onChange={handleChange}
+            placeholder="Duration"
+            className="border p-2 rounded w-full mb-3"
+          />
+
+          <input
+            name="actual_price"
+            value={formData.actual_price}
+            onChange={handleChange}
+            placeholder="Actual Price"
+            className="border p-2 rounded w-full mb-3"
+          />
+
+          <input
+            name="price"
+            value={formData.price}
+            onChange={handleChange}
+            placeholder="Offer Price"
+            className="border p-2 rounded w-full mb-3"
+          />
+
+          <input type="file" onChange={handleImageChange} />
+
+          <button className="bg-green-600 text-white px-4 py-2 rounded mt-3 flex gap-2">
+            <Save size={18} /> {editingId ? "Update Course" : "Save Course"}
+          </button>
+
         </form>
       )}
 
-      {/* List */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {courses.map((c) => (
-          <div key={c.id} className="border rounded-lg p-4 shadow">
-            <h3 className="font-bold text-lg">{c.course_name}</h3>
-            <p className="text-gray-600">₹{c.price}</p>
-            <p className="text-sm text-gray-500">{c.duration}</p>
+      {/* ================= COURSE LIST ================= */}
 
-            <div className="flex gap-2 mt-3">
-              <button
-                onClick={() => handleEdit(c)}
-                className="flex-1 bg-blue-500 text-white p-2 rounded flex justify-center gap-1"
-              >
-                <Edit2 size={16} /> Edit
-              </button>
+      <div className="grid md:grid-cols-3 gap-4">
+        {courses.map((c) => {
 
-              <button
-                onClick={() => handleDelete(c.id)}
-                className="flex-1 bg-red-500 text-white p-2 rounded flex justify-center gap-1"
-              >
-                <Trash2 size={16} /> Delete
-              </button>
+          const actual = Number(c.actual_price || 0);
+          const offer = Number(c.price || 0);
+
+          return (
+            <div key={c.id} className="border p-4 rounded shadow">
+
+              <img
+                src={getImage(c)}
+                className="h-40 w-full object-cover rounded mb-2"
+              />
+
+              <h3 className="font-bold">{c.course_name}</h3>
+
+              {c.duration && (
+                <p className="text-sm text-gray-500">
+                  Duration : {c.duration}
+                </p>
+              )}
+
+              {/* PRICE */}
+              <div className="mt-2 flex items-center gap-2">
+
+                {actual > 0 && (
+                  <span
+                    className={`text-sm ${
+                      offer > 0
+                        ? "text-gray-400 line-through"
+                        : "text-black font-semibold"
+                    }`}
+                  >
+                    ₹{actual.toLocaleString()}
+                  </span>
+                )}
+
+                {offer > 0 && (
+                  <span className="text-green-600 text-xl font-bold">
+                    ₹{offer.toLocaleString()}
+                  </span>
+                )}
+
+              </div>
+
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => handleEdit(c)}
+                  className="flex-1 bg-blue-500 text-white p-2 rounded flex items-center justify-center gap-1"
+                >
+                  <Edit2 size={16} /> Edit
+                </button>
+
+                <button
+                  onClick={() => handleDelete(c.id)}
+                  className="flex-1 bg-red-600 text-white p-2 rounded flex items-center justify-center gap-1"
+                >
+                  <Trash2 size={16} /> Delete
+                </button>
+              </div>
+
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
-
-export default Courses;

@@ -267,14 +267,12 @@ function SubCategoryPage() {
             required
           >
             <option value="">Select Category</option>
-            {/* {categories.map((cat) => (
+             {categories.map((cat) => (
               <option key={cat.id} value={cat.id}>
                 {cat.category_name} ({cat.exam})
               </option>
-            ))} */}
-            <option value="arithmetics">arithmetics</option>
-            <option value="algebra">algebra</option>
-            <option value="geometry">geometry</option>
+            ))} 
+            
           </select>
 
           <input
