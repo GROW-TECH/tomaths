@@ -11,36 +11,32 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 
 /* ================= CONFIG ================= */
+
 const API_BASE = "https://xiadot.com/admin_maths/api";
 const RAZORPAY_KEY = "rzp_live_Remrhpj0npbETD";
 const DEFAULT_IMG = "/default-unit.png";
-const UPLOAD_BASE = "https://xiadot.com/admin_maths/uploads/";
 
 /* ================= TYPES ================= */
+
 interface Course {
   id: number;
   course_name: string;
   description: string;
-  price: string;
+  actual_price: number;
+  offer_price: number;
+  discount: number;
   duration: string;
   image_url?: string | null;
+  paid?: boolean;
 }
 
 interface ApiResponse {
   success: boolean;
   courses: Course[];
-  message?: string;
 }
 
-/* ================= IMAGE HELPER ================= */
-const getImage = (course: Course) => {
-  const raw = course.image_url || "";
-  if (!raw) return DEFAULT_IMG;
-  const filename = raw.split("/").pop();
-  return filename ? UPLOAD_BASE + filename : DEFAULT_IMG;
-};
-
 /* ================= COMPONENT ================= */
+
 export default function CourseDetails() {
   const { slug } = useParams();
   const navigate = useNavigate();
@@ -49,32 +45,32 @@ export default function CourseDetails() {
   const [loadingPage, setLoadingPage] = useState(true);
   const [loadingPay, setLoadingPay] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [rzpReady, setRzpReady] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<
     "success" | "failed" | null
   >(null);
 
   const paymentLock = useRef(false);
-
   const user = JSON.parse(localStorage.getItem("user") || "{}");
 
   /* ================= FETCH COURSE ================= */
+
   useEffect(() => {
     const loadCourse = async () => {
       try {
-        if (!slug) throw new Error("Invalid page");
+        if (!slug) throw new Error("Invalid URL");
 
         const id = slug.split("-")[0];
 
         const res = await fetch(`${API_BASE}/get_courses.php`);
         const json: ApiResponse = await res.json();
 
-        if (!json?.success) throw new Error("API error");
+        if (!json.success) throw new Error("API error");
 
         const found = json.courses.find((c) => String(c.id) === String(id));
 
-        if (!found) throw new Error("Course not found");
+        console.log("Found course:", found);
 
+        if (!found) throw new Error("Course not found");
         setCourse(found);
       } catch (err: any) {
         setErrorMsg(err.message);
@@ -87,40 +83,22 @@ export default function CourseDetails() {
   }, [slug]);
 
   /* ================= LOAD RAZORPAY ================= */
+
   useEffect(() => {
-    if ((window as any).Razorpay) {
-      setRzpReady(true);
-      return;
-    }
+    if ((window as any).Razorpay) return;
 
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
-
-    script.onload = () => {
-      console.log("Razorpay loaded");
-      setRzpReady(true);
-    };
-
-    script.onerror = () => {
-      setErrorMsg("Payment gateway failed to load");
-    };
-
     document.body.appendChild(script);
   }, []);
 
   /* ================= BUY NOW ================= */
-  const handleBuyNow = async () => {
-    console.log("Buy clicked");
 
+  const handleBuyNow = async () => {
     if (!course) return;
 
     if (!user?.id) {
-      alert("Please login to continue");
-      return;
-    }
-
-    if (!rzpReady) {
-      alert("Payment gateway loading...");
+      alert("Please login first");
       return;
     }
 
@@ -128,11 +106,10 @@ export default function CourseDetails() {
 
     paymentLock.current = true;
     setLoadingPay(true);
-    setErrorMsg("");
 
     try {
-      /* ⭐ Convert price to paise */
-      const amount = Number(course.price) * 100;
+      console.log("Offer price:", course.offer_price, "price", course);
+      const amount = course.offer_price * 100;
 
       const orderRes = await fetch(`${API_BASE}/create_order.php`, {
         method: "POST",
@@ -141,10 +118,6 @@ export default function CourseDetails() {
       });
 
       const order = await orderRes.json();
-      console.log("Order Response:", order);
-
-      if (!order?.success)
-        throw new Error(order?.message || "Order creation failed");
 
       const options = {
         key: RAZORPAY_KEY,
@@ -155,51 +128,32 @@ export default function CourseDetails() {
         order_id: order.order_id,
 
         handler: async (response: any) => {
-          console.log("Payment Response:", response);
+          const verifyRes = await fetch(`${API_BASE}/verify-payment.php`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...response,
+              user_id: user.id,
+              course_id: course.id,
+            }),
+          });
 
-          try {
-            const verifyRes = await fetch(`${API_BASE}/verify-payment.php`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                ...response,
-                user_id: user.id,
-                course_id: course.id,
-              }),
-            });
+          const verify = await verifyRes.json();
 
-            const verify = await verifyRes.json();
-            console.log("Verify Response:", verify);
-
-            if (!verify?.success)
-              throw new Error("Payment verification failed");
-
+          if (verify.success) {
             setPaymentStatus("success");
-          } catch (err: any) {
+          } else {
             setPaymentStatus("failed");
-            setErrorMsg(err.message);
-          } finally {
-            setLoadingPay(false);
-            paymentLock.current = false;
           }
-        },
 
-        modal: {
-          ondismiss: () => {
-            setPaymentStatus("failed");
-            setLoadingPay(false);
-            paymentLock.current = false;
-          },
+          setLoadingPay(false);
+          paymentLock.current = false;
         },
-
-        theme: { color: "#2563eb" },
       };
 
       new (window as any).Razorpay(options).open();
-    } catch (err: any) {
-      console.error(err);
+    } catch (err) {
       setPaymentStatus("failed");
-      setErrorMsg(err.message);
       setLoadingPay(false);
       paymentLock.current = false;
     }
@@ -209,31 +163,30 @@ export default function CourseDetails() {
 
   if (loadingPage)
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex justify-center items-center">
         Loading course...
       </div>
     );
 
   if (!course)
     return (
-      <div className="min-h-screen flex items-center justify-center text-red-600 gap-2">
+      <div className="min-h-screen flex justify-center items-center text-red-600 gap-2">
         <AlertCircle />
-        {errorMsg || "Course not found"}
+        {errorMsg}
       </div>
     );
 
   if (paymentStatus === "success")
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex justify-center items-center">
         <CheckCircle size={90} className="text-green-600" />
       </div>
     );
 
   if (paymentStatus === "failed")
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-3">
+      <div className="min-h-screen flex justify-center items-center">
         <XCircle size={90} className="text-red-600" />
-        <p>{errorMsg || "Payment Failed"}</p>
       </div>
     );
 
@@ -246,14 +199,14 @@ export default function CourseDetails() {
         <button onClick={() => navigate(-1)}>
           <ArrowLeft />
         </button>
-        <h2 className="text-lg font-semibold">Back</h2>
+        <h2 className="font-semibold">Back</h2>
       </div>
 
       <div className="max-w-6xl mx-auto p-6">
         <div className="bg-white rounded-3xl shadow-md p-6 grid md:grid-cols-2 gap-8">
           {/* IMAGE */}
           <img
-            src={getImage(course)}
+            src={course.image_url || DEFAULT_IMG}
             className="rounded-2xl w-full object-cover"
             onError={(e) => (e.currentTarget.src = DEFAULT_IMG)}
           />
@@ -261,48 +214,72 @@ export default function CourseDetails() {
           {/* RIGHT CONTENT */}
           <div className="flex flex-col justify-between">
             <div>
-              <h1 className="text-3xl font-bold mb-2">{course.course_name}</h1>
+              <h1 className="text-3xl font-bold mb-3">{course.course_name}</h1>
 
-              <p className="text-gray-500 mb-6">{course.description}</p>
+              {/* DESCRIPTION */}
+              {course.description && (
+                <div className="bg-gray-50 p-4 rounded-xl mb-6">
+                  <h3 className="font-semibold mb-2">Description</h3>
+                  <p className="text-gray-600">{course.description}</p>
+                </div>
+              )}
 
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="bg-green-50 rounded-xl p-4">
-                  <p className="text-sm text-gray-500">PRICE</p>
-                  <div className="flex items-center gap-2 text-green-700 font-bold text-xl">
+              {/* PRICE */}
+              <div className="bg-green-50 rounded-xl p-4 mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center text-green-700 text-3xl font-bold">
                     <IndianRupee size={18} />
-                    {course.price}
+                    {course.offer_price}
                   </div>
+
+                  {course.actual_price > course.offer_price && (
+                    <div className="flex items-center text-gray-400 line-through text-lg">
+                      <IndianRupee size={16} />
+                      {course.actual_price}
+                    </div>
+                  )}
                 </div>
 
-                <div className="bg-gray-100 rounded-xl p-4">
-                  <p className="text-sm text-gray-500">DURATION</p>
+                {course.discount > 0 && (
+                  <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded mt-2 inline-block">
+                    {course.discount}% OFF
+                  </span>
+                )}
+              </div>
+
+              {/* DURATION */}
+              {course.duration && (
+                <div className="bg-gray-100 rounded-xl p-4 mb-6">
+                  <p className="text-sm text-gray-500 mb-1">Course Duration</p>
+
                   <div className="flex items-center gap-2 font-semibold">
                     <Clock size={18} />
                     {course.duration}
                   </div>
                 </div>
-              </div>
+              )}
 
+              {/* WHAT YOU'LL GET */}
               <div className="bg-gray-50 rounded-xl p-5 mb-6">
-                <h3 className="font-semibold mb-3">What You'll Get:</h3>
+                <h3 className="font-semibold text-lg mb-3">What You'll Get:</h3>
 
                 <ul className="space-y-2 text-gray-600">
-                  <li className="flex gap-2">
+                  <li className="flex items-center gap-2">
                     <CheckCircle className="text-green-600" size={18} />
                     Complete topic-wise test series
                   </li>
 
-                  <li className="flex gap-2">
+                  <li className="flex items-center gap-2">
                     <CheckCircle className="text-green-600" size={18} />
                     Comprehensive PDF study materials
                   </li>
 
-                  <li className="flex gap-2">
+                  <li className="flex items-center gap-2">
                     <CheckCircle className="text-green-600" size={18} />
                     Instant access after payment
                   </li>
 
-                  <li className="flex gap-2">
+                  <li className="flex items-center gap-2">
                     <CheckCircle className="text-green-600" size={18} />
                     Lifetime access to course materials
                   </li>
@@ -311,20 +288,28 @@ export default function CourseDetails() {
             </div>
 
             {/* BUY BUTTON */}
-            <button
-              onClick={handleBuyNow}
-              disabled={loadingPay}
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 disabled:opacity-60"
-            >
-              {loadingPay ? (
-                "Processing..."
-              ) : (
-                <>
-                  <ShoppingCart size={20} />
-                  Buy Now
-                </>
-              )}
-            </button>
+            {!course.paid && (
+              <button
+                onClick={handleBuyNow}
+                disabled={loadingPay}
+                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2"
+              >
+                {loadingPay ? (
+                  "Processing..."
+                ) : (
+                  <>
+                    <ShoppingCart size={20} />
+                    Buy Now
+                  </>
+                )}
+              </button>
+            )}
+
+            {course.paid && (
+              <div className="text-green-600 font-semibold mt-6">
+                ✔ Already Purchased
+              </div>
+            )}
           </div>
         </div>
       </div>
