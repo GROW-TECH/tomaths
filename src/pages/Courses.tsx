@@ -16,9 +16,17 @@ type Course = {
   price: string;
   actual_price?: string;
   duration?: string;
+  description?: string;
+
   category_id?: string;
+  category_name?: string;
+
   subcategory_id?: string;
+  subcategory_name?: string;
+
   exam_id?: string;
+  exam_name?: string;
+
   image?: string;
   image_url?: string;
 };
@@ -32,11 +40,14 @@ export default function Courses() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
 
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
   const [formData, setFormData] = useState({
     course_name: "",
     price: "",
     actual_price: "",
     duration: "",
+    description: "",
     category_id: "",
     subcategory_id: "",
     exam_id: "",
@@ -47,10 +58,8 @@ export default function Courses() {
 
   const getImage = (course: Course) => {
     if (course.image_url) return course.image_url;
-
     if (course.image)
       return `https://xiadot.com/admin_maths/uploads/${course.image}`;
-
     return "https://xiadot.com/admin_maths/uploads/default.png";
   };
 
@@ -60,6 +69,12 @@ export default function Courses() {
     loadAll();
   }, []);
 
+  useEffect(() => {
+    if (formData.category_id) {
+      loadSubCategories(formData.category_id);
+    }
+  }, [formData.category_id]);
+
   const loadAll = async () => {
     const [courseRes, catRes, examRes] = await Promise.all([
       axios.get(`${API}/courses.php?action=list`),
@@ -67,6 +82,12 @@ export default function Courses() {
       axios.get(`${API}/exam.php?action=list`),
     ]);
 
+    console.log("====================================");
+    console.log("courses", courseRes);
+    console.log("category", catRes);
+    console.log("subcategory", examRes);
+    console.log("====================================");
+    console.log(courses);
     setCourses(courseRes.data.data || []);
     setCategories(catRes.data.data || []);
     setExams(examRes.data.data || []);
@@ -81,38 +102,66 @@ export default function Courses() {
     }
 
     const res = await axios.get(
-      `${API}/get_subCategory.php?action=list&category_id=${category_id}`
+      `${API}/get_subCategory.php?action=list&category_id=${category_id}`,
     );
 
     setSubCategories(res.data.data || []);
   };
 
+
+  const loadExams = async (subcategory_id: string) => {
+  if (!subcategory_id) return;
+
+  const res = await axios.get(
+    `${API}/exam.php?action=list&subcategory_id=${subcategory_id}`
+  );
+
+  setExams(res.data.data || []);
+};
+
+
   /* ================= FORM CHANGE ================= */
+const handleChange = async (
+  e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+) => {
+  const { name, value } = e.target;
 
-  const handleChange = async (
-    e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-
-    if (name === "category_id") {
-      setFormData((prev) => ({
-        ...prev,
-        category_id: value,
-        subcategory_id: "",
-      }));
-
-      await loadSubCategories(value);
-      return;
-    }
-
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
+  if (name === "category_id") {
     setFormData((prev) => ({
       ...prev,
-      image: e.target.files?.[0] || null,
+      category_id: value,
+      subcategory_id: "",
+      exam_id: "",
     }));
+
+    await loadSubCategories(value);
+    return;
+  }
+
+  if (name === "subcategory_id") {
+    setFormData((prev) => ({
+      ...prev,
+      subcategory_id: value,
+      exam_id: "",
+    }));
+
+    await loadExams(value);
+    return;
+  }
+
+  setFormData((prev) => ({ ...prev, [name]: value }));
+};
+
+
+  /* ================= IMAGE CHANGE ================= */
+
+  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+
+    if (file) {
+      setFormData((prev) => ({ ...prev, image: file }));
+      setPreviewImage(URL.createObjectURL(file));
+    }
   };
 
   /* ================= SUBMIT ================= */
@@ -153,35 +202,51 @@ export default function Courses() {
 
   /* ================= EDIT ================= */
 
-  const handleEdit = async (c: Course) => {
-    setFormData({
-      course_name: c.course_name,
-      price: c.price,
-      actual_price: c.actual_price || "",
-      duration: c.duration || "",
-      category_id: c.category_id || "",
-      subcategory_id: c.subcategory_id || "",
-      exam_id: c.exam_id || "",
-      image: null,
-    });
+const handleEdit = async (c: Course) => {
+  setShowForm(true);
+  setEditingId(c.id);
 
-    if (c.category_id) {
-      await loadSubCategories(c.category_id);
-    }
+  const categoryId = String(c.category_id || "");
+  const subcategoryId = String(c.subcategory_id || "");
 
-    setEditingId(c.id);
-    setShowForm(true);
-  };
+  // Load subcategories first
+  if (categoryId) {
+    await loadSubCategories(categoryId);
+  }
+
+  // Load exams next
+  if (subcategoryId) {
+    await loadExams(subcategoryId);
+  }
+
+  setFormData({
+    course_name: c.course_name || "",
+    price: c.price || "",
+    actual_price: c.actual_price || "",
+    duration: c.duration || "",
+    description: c.description || "",
+    category_id: categoryId,
+    subcategory_id: subcategoryId,
+    exam_id: String(c.exam_id || ""),
+    image: null,
+  });
+
+  setPreviewImage(getImage(c));
+};
+
+  /* ================= RESET ================= */
 
   const resetForm = () => {
     setEditingId(null);
     setShowForm(false);
+    setPreviewImage(null);
 
     setFormData({
       course_name: "",
       price: "",
       actual_price: "",
       duration: "",
+      description: "",
       category_id: "",
       subcategory_id: "",
       exam_id: "",
@@ -193,7 +258,6 @@ export default function Courses() {
 
   return (
     <div className="p-6">
-
       <div className="flex justify-between mb-6">
         <h1 className="text-3xl font-bold">Courses</h1>
 
@@ -206,10 +270,11 @@ export default function Courses() {
       </div>
 
       {/* ================= FORM ================= */}
-
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white p-6 rounded shadow mb-6">
-
+        <form
+          onSubmit={handleSubmit}
+          className="bg-white p-6 rounded shadow mb-6"
+        >
           <input
             name="course_name"
             value={formData.course_name}
@@ -218,43 +283,54 @@ export default function Courses() {
             className="border p-2 rounded w-full mb-3"
           />
 
+          <textarea
+            name="description"
+            value={formData.description}
+            onChange={handleChange}
+            placeholder="Course Description"
+            className="border p-2 rounded w-full mb-3"
+          />
+
+          {/* CATEGORY */}
           <select
             name="category_id"
-            value={formData.category_id}
+            value={formData.category_id || ""}
             onChange={handleChange}
             className="border p-2 rounded w-full mb-3"
           >
             <option value="">Select Category</option>
             {categories.map((c) => (
-              <option key={c.id} value={c.id}>
+              <option key={c.id} value={String(c.id)}>
                 {c.category_name}
               </option>
             ))}
           </select>
 
+          {/* SUBCATEGORY */}
           <select
             name="subcategory_id"
-            value={formData.subcategory_id}
+            value={formData.subcategory_id || ""}
             onChange={handleChange}
             className="border p-2 rounded w-full mb-3"
           >
             <option value="">Select SubCategory</option>
             {subcategories.map((s) => (
-              <option key={s.id} value={s.id}>
+              <option key={s.id} value={String(s.id)}>
                 {s.name}
               </option>
             ))}
           </select>
 
+          {/* EXAM */}
           <select
             name="exam_id"
-            value={formData.exam_id}
+            value={formData.exam_id || ""}
             onChange={handleChange}
             className="border p-2 rounded w-full mb-3"
           >
             <option value="">Select Exam</option>
             {exams.map((e) => (
-              <option key={e.id} value={e.id}>
+              <option key={e.id} value={String(e.id)}>
                 {e.exam_name}
               </option>
             ))}
@@ -286,10 +362,16 @@ export default function Courses() {
 
           <input type="file" onChange={handleImageChange} />
 
+          {previewImage && (
+            <img
+              src={previewImage}
+              className="mt-3 h-32 rounded border object-cover"
+            />
+          )}
+
           <button className="bg-green-600 text-white px-4 py-2 rounded mt-3 flex gap-2">
             <Save size={18} /> {editingId ? "Update Course" : "Save Course"}
           </button>
-
         </form>
       )}
 
@@ -297,13 +379,11 @@ export default function Courses() {
 
       <div className="grid md:grid-cols-3 gap-4">
         {courses.map((c) => {
-
           const actual = Number(c.actual_price || 0);
           const offer = Number(c.price || 0);
 
           return (
             <div key={c.id} className="border p-4 rounded shadow">
-
               <img
                 src={getImage(c)}
                 className="h-40 w-full object-cover rounded mb-2"
@@ -311,23 +391,19 @@ export default function Courses() {
 
               <h3 className="font-bold">{c.course_name}</h3>
 
-              {c.duration && (
-                <p className="text-sm text-gray-500">
-                  Duration : {c.duration}
+              {c.description && (
+                <p className="text-sm text-gray-600 mt-1 line-clamp-3">
+                  {c.description}
                 </p>
               )}
 
-              {/* PRICE */}
-              <div className="mt-2 flex items-center gap-2">
+              {c.duration && (
+                <p className="text-sm text-gray-500">Duration : {c.duration}</p>
+              )}
 
+              <div className="mt-2 flex items-center gap-2">
                 {actual > 0 && (
-                  <span
-                    className={`text-sm ${
-                      offer > 0
-                        ? "text-gray-400 line-through"
-                        : "text-black font-semibold"
-                    }`}
-                  >
+                  <span className="text-gray-400 line-through text-sm">
                     ₹{actual.toLocaleString()}
                   </span>
                 )}
@@ -337,7 +413,6 @@ export default function Courses() {
                     ₹{offer.toLocaleString()}
                   </span>
                 )}
-
               </div>
 
               <div className="flex gap-2 mt-3">
@@ -355,7 +430,6 @@ export default function Courses() {
                   <Trash2 size={16} /> Delete
                 </button>
               </div>
-
             </div>
           );
         })}
