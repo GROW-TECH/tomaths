@@ -1,5 +1,12 @@
 import { useState, useEffect } from "react";
-import { CheckCircle, XCircle, AlertCircle, Lock, BookOpen } from "lucide-react";
+import {
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Lock,
+  BookOpen,
+  X,               // for close button
+} from "lucide-react";
 
 /* ================= TYPES ================= */
 interface User {
@@ -25,8 +32,6 @@ interface Course {
 const API_BASE = "https://xiadot.com/admin_maths/api";
 const RAZORPAY_KEY = "rzp_live_Remrhpj0npbETD";
 
-
-
 export default function TestSeriesPage() {
   const [user, setUser] = useState<User | null>(null);
   const [enrolled, setEnrolled] = useState(false);
@@ -36,8 +41,11 @@ export default function TestSeriesPage() {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"success" | "error" | "info">("info");
 
+  // ========== NEW: State for iframe modal ==========
+  const [selectedTest, setSelectedTest] = useState<Test | null>(null);
+
   const course: Course = {
-    id: 8, // Geometry course ID from your database
+    id: 8,
     title: "Geometry - Aptitude Topic wise Test-Series + PDF",
     price: 1,
   };
@@ -128,7 +136,6 @@ export default function TestSeriesPage() {
     setPaymentLoading(true);
     setMessage("");
 
-    // Create order
     fetch(`${API_BASE}/create_order.php`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -231,7 +238,7 @@ export default function TestSeriesPage() {
             Please login to access the test series
           </p>
           <button
-            onClick={() => window.location.href = "/"}
+            onClick={() => (window.location.href = "/")}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
           >
             Go to Login
@@ -382,17 +389,54 @@ export default function TestSeriesPage() {
                   <p className="text-sm text-gray-500 mb-4">
                     Added: {new Date(test.created_at).toLocaleDateString()}
                   </p>
-                  <a
-                    href={test.test_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  {/* ===== CHANGED: anchor → button ===== */}
+                  <button
+                    onClick={() => setSelectedTest(test)}
                     className="block w-full bg-blue-600 hover:bg-blue-700 text-white text-center py-3 rounded-lg font-medium transition-colors"
                   >
                     Start Test
-                  </a>
+                  </button>
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* ========== IFRAME MODAL ========== */}
+        {selectedTest && (
+          <div
+            className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4"
+            onClick={() => setSelectedTest(null)} // click overlay to close
+          >
+            <div
+              className="bg-white rounded-lg shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()} // prevent closing when clicking inside modal
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-4 border-b">
+                <h2 className="text-xl font-bold text-gray-800 truncate">
+                  {selectedTest.test_name}
+                </h2>
+                <button
+                  onClick={() => setSelectedTest(null)}
+                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                  aria-label="Close modal"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              {/* Modal Body - iframe */}
+              <div className="flex-1 w-full">
+                <iframe
+                  src={selectedTest.test_url}
+                  title={selectedTest.test_name}
+                  className="w-full h-full border-0"
+                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals" // adjust as needed
+                  loading="lazy"
+                />
+              </div>
+            </div>
           </div>
         )}
       </div>

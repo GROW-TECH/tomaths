@@ -68,15 +68,22 @@ export default function PaidCoursesPage() {
   /* ================= LOAD COURSES ================= */
   const loadCourses = (userId: number) => {
     setLoading(true);
-    fetch(`${API_BASE}/get_courses.php`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: userId }),
-    })
-      .then((res) => res.json())
+fetch(`${API_BASE}/get_paid_courses.php`, {
+  method: "POST",
+  body: JSON.stringify({ user_id: userId })
+})
+      .then((res) =>  
+        {
+          console.log("Courses API Response Status:", res);
+         return res.json();
+  })
       .then((data) => {
+        console.log("Courses API response:", data );
         if (data.success && data.courses) {
           setCourses(data.courses);
+          // console.log('====================================');
+          // console.log(courses);
+          // console.log('====================================');
         } else {
           setMessage("Failed to load courses");
           setMessageType("error");

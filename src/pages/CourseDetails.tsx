@@ -208,7 +208,6 @@ export default function CourseDetails() {
           <img
             src={course.image_url || DEFAULT_IMG}
             className="rounded-2xl w-full object-cover"
-            onError={(e) => (e.currentTarget.src = DEFAULT_IMG)}
           />
 
           {/* RIGHT CONTENT */}
@@ -258,33 +257,6 @@ export default function CourseDetails() {
                   </div>
                 </div>
               )}
-
-              {/* WHAT YOU'LL GET */}
-              <div className="bg-gray-50 rounded-xl p-5 mb-6">
-                <h3 className="font-semibold text-lg mb-3">What You'll Get:</h3>
-
-                <ul className="space-y-2 text-gray-600">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="text-green-600" size={18} />
-                    Complete topic-wise test series
-                  </li>
-
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="text-green-600" size={18} />
-                    Comprehensive PDF study materials
-                  </li>
-
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="text-green-600" size={18} />
-                    Instant access after payment
-                  </li>
-
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="text-green-600" size={18} />
-                    Lifetime access to course materials
-                  </li>
-                </ul>
-              </div>
             </div>
 
             {/* BUY BUTTON */}
