@@ -1,16 +1,16 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { 
-  CheckCircle, 
-  Lock, 
-  Clock, 
-  BookOpen, 
-  Sparkles, 
+import {
+  CheckCircle,
+  Lock,
+  Clock,
+  BookOpen,
+  Sparkles,
   AlertCircle,
   TrendingUp,
   Award,
   Star,
-  Calendar
+  Calendar,
 } from "lucide-react";
 
 /* ================= TYPES ================= */
@@ -37,8 +37,157 @@ interface Course {
 const API_BASE = "https://xiadot.com/admin_maths/api";
 const RAZORPAY_KEY = "rzp_live_Remrhpj0npbETD";
 
+/* ================= COURSE CARD COMPONENT ================= */
+function CourseCard({
+  course,
+  onBuy,
+  onAccess,
+  isLoading,
+}: {
+  course: Course;
+  onBuy: (course: Course) => void;
+  onAccess: () => void;
+  isLoading: boolean;
+}) {
+  // Format expiry date
+  const formatExpiryDate = (dateString?: string) => {
+    if (!dateString) return null;
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  };
 
+  return (
+    <div className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all transform hover:-translate-y-2 duration-300">
+      {/* Image */}
+      <div className="relative h-48 bg-gradient-to-br from-blue-500 to-indigo-600 overflow-hidden">
+        {course.image ? (
+          <img
+            src={course.image}
+            alt={course.course_name}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <BookOpen className="text-white opacity-50" size={64} />
+          </div>
+        )}
 
+        {/* Paid Badge with Expiry */}
+        {course.paid && (
+          <div className="absolute top-4 right-4 flex flex-col gap-2">
+            <div className="bg-green-500 text-white px-4 py-2 rounded-full flex items-center gap-2 shadow-lg">
+              <CheckCircle size={18} />
+              <span className="font-bold text-sm">Owned</span>
+            </div>
+
+            {/* Days Remaining Badge */}
+            {course.days_remaining !== undefined &&
+              course.days_remaining !== null && (
+                <div
+                  className={`px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg text-xs font-semibold ${
+                    course.days_remaining <= 7
+                      ? "bg-red-500 text-white animate-pulse"
+                      : course.days_remaining <= 15
+                      ? "bg-yellow-500 text-white"
+                      : "bg-white text-gray-700"
+                  }`}
+                >
+                  <Calendar size={14} />
+                  <span>
+                    {course.days_remaining} day
+                    {course.days_remaining !== 1 ? "s" : ""} left
+                  </span>
+                </div>
+              )}
+          </div>
+        )}
+
+        {/* Lock Badge */}
+        {!course.paid && (
+          <div className="absolute top-4 right-4 bg-white bg-opacity-90 text-gray-700 px-4 py-2 rounded-full flex items-center gap-2 shadow-lg">
+            <Lock size={18} />
+            <span className="font-bold text-sm">Locked</span>
+          </div>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="p-6">
+        <h3 className="text-xl font-bold text-gray-800 mb-3 line-clamp-2">
+          {course.course_name}
+        </h3>
+
+        <p className="text-gray-600 text-sm mb-4 line-clamp-3">
+          {course.description ||
+            "Comprehensive course with detailed study materials and practice tests"}
+        </p>
+
+        {/* Expiry Info for Paid Courses */}
+        {course.paid && course.expiry_date && (
+          <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center gap-2 text-sm">
+              <Calendar size={16} className="text-blue-600" />
+              <div>
+                <p className="text-blue-800 font-semibold">
+                  Access expires on:
+                </p>
+                <p className="text-blue-600">
+                  {formatExpiryDate(course.expiry_date)}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Stats */}
+        <div className="flex items-center gap-4 mb-4 text-sm text-gray-500">
+          <div className="flex items-center gap-2">
+            <Clock size={16} />
+            <span>{course.duration || "Self-paced"}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Star size={16} className="text-yellow-500 fill-yellow-500" />
+            <span>4.8</span>
+          </div>
+        </div>
+
+        {/* Price & Action */}
+        {course.paid ? (
+          <button
+            onClick={onAccess}
+            className="block w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white text-center py-4 rounded-xl font-bold text-lg transition-all shadow-md"
+          >
+            Access Course →
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold text-blue-600">
+                  ₹{course.price}
+                </p>
+                <p className="text-xs text-gray-500">1-month access</p>
+              </div>
+            </div>
+            <button
+              onClick={() => onBuy(course)}
+              disabled={isLoading}
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-3 px-6 rounded-xl font-bold transition-all shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isLoading ? "Processing..." : "Buy Now"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ================= PAID COURSES PAGE ================= */
 export default function PaidCoursesPage() {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
@@ -46,7 +195,9 @@ export default function PaidCoursesPage() {
   const [loading, setLoading] = useState(true);
   const [paymentLoading, setPaymentLoading] = useState<number | null>(null);
   const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState<"success" | "error" | "info">("info");
+  const [messageType, setMessageType] = useState<"success" | "error" | "info">(
+    "info"
+  );
 
   /* ================= LOAD USER & COURSES ================= */
   useEffect(() => {
@@ -68,22 +219,23 @@ export default function PaidCoursesPage() {
   /* ================= LOAD COURSES ================= */
   const loadCourses = (userId: number) => {
     setLoading(true);
-fetch(`${API_BASE}/get_paid_courses.php`, {
-  method: "POST",
-  body: JSON.stringify({ user_id: userId })
-})
-      .then((res) =>  
-        {
-          console.log("Courses API Response Status:", res);
-         return res.json();
-  })
+    fetch(`${API_BASE}/get_paid_courses.php`, {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId }),
+    })
+      .then((res) => res.json())
       .then((data) => {
-        console.log("Courses API response:", data );
+        console.log("Courses API response:", data);
         if (data.success && data.courses) {
-          setCourses(data.courses);
-          // console.log('====================================');
-          // console.log(courses);
-          // console.log('====================================');
+          // Filter out expired courses
+          const filteredCourses = data.courses.filter((course: Course) => {
+            if (course.expiry_date) {
+              const expiryDate = new Date(course.expiry_date);
+              return expiryDate > new Date(); // Only show if expiry date is in the future
+            }
+            return true; // If no expiry date, show the course
+          });
+          setCourses(filteredCourses);
         } else {
           setMessage("Failed to load courses");
           setMessageType("error");
@@ -170,7 +322,7 @@ fetch(`${API_BASE}/get_paid_courses.php`, {
         if (data.success) {
           setMessage("✅ Payment successful! Course unlocked for 1 month.");
           setMessageType("success");
-          
+
           if (user) {
             loadCourses(user.id);
           }
@@ -189,6 +341,63 @@ fetch(`${API_BASE}/get_paid_courses.php`, {
       });
   };
 
+  /* ================= BLOCK SCREENSHOT & DEVTOOLS ================= */
+  useEffect(() => {
+    // Block right-click
+    const blockRightClick = (e: MouseEvent) => {
+      e.preventDefault();
+      return false;
+    };
+
+    // Block keyboard shortcuts (like PrintScreen and DevTools shortcuts)
+    const blockKeys = (e: KeyboardEvent) => {
+      // F12 (DevTools)
+      if (e.key === "F12") {
+        e.preventDefault();
+        return false;
+      }
+      // Ctrl+Shift+I, J, C (DevTools)
+      if (e.ctrlKey && e.shiftKey && ["I", "J", "C"].includes(e.key)) {
+        e.preventDefault();
+        return false;
+      }
+      // Ctrl+U (View Source), Ctrl+S (Save), Ctrl+P (Print)
+      if (e.ctrlKey && ["u", "s", "p"].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+        return false;
+      }
+      // PrintScreen
+      if (e.key === "PrintScreen") {
+        e.preventDefault();
+        navigator.clipboard.writeText("").catch(() => {});
+        setMessage("Screenshot attempt blocked");
+        setMessageType("error");
+      }
+    };
+
+    // Detect DevTools (by window size change)
+    const detectDevTools = () => {
+      const widthThreshold = window.outerWidth - window.innerWidth > 160;
+      const heightThreshold = window.outerHeight - window.innerHeight > 160;
+      if (widthThreshold || heightThreshold) {
+        setMessage("DevTools detected, blocking the page");
+        setMessageType("error");
+      }
+    };
+
+    // Attach listeners
+    window.addEventListener("contextmenu", blockRightClick, true);
+    window.addEventListener("keydown", blockKeys, true);
+    window.addEventListener("resize", detectDevTools, true);
+
+    // Clean up listeners
+    return () => {
+      window.removeEventListener("contextmenu", blockRightClick, true);
+      window.removeEventListener("keydown", blockKeys, true);
+      window.removeEventListener("resize", detectDevTools, true);
+    };
+  }, []);
+
   /* ================= LOADING STATE ================= */
   if (loading) {
     return (
@@ -196,55 +405,25 @@ fetch(`${API_BASE}/get_paid_courses.php`, {
         <div className="text-center">
           <div className="relative">
             <div className="animate-spin rounded-full h-20 w-20 border-t-4 border-b-4 border-blue-600 mx-auto"></div>
-            <Sparkles className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-blue-600" size={32} />
+            <Sparkles
+              className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-blue-600"
+              size={32}
+            />
           </div>
-          <p className="mt-6 text-gray-700 font-semibold text-lg">Loading courses...</p>
+          <p className="mt-6 text-gray-700 font-semibold text-lg">
+            Loading courses...
+          </p>
         </div>
       </div>
     );
   }
 
-  const paidCourses = courses.filter(c => c.paid);
+  const paidCourses = courses.filter((c) => c.paid);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
-        {/* Hero Section */}
-        <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 rounded-3xl shadow-2xl p-8 sm:p-12 mb-8 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-white opacity-5 rounded-full -mr-48 -mt-48"></div>
-          <div className="absolute bottom-0 left-0 w-64 h-64 bg-white opacity-5 rounded-full -ml-32 -mb-32"></div>
-          
-          <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="bg-white bg-opacity-20 p-3 rounded-xl backdrop-blur-sm">
-                <TrendingUp className="text-white" size={32} />
-              </div>
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white">
-                Premium Courses
-              </h1>
-            </div>
-            <p className="text-blue-100 text-lg sm:text-xl max-w-3xl mb-6">
-              Master competitive exams with our comprehensive test series and study materials
-            </p>
-            
-            {user && (
-              <div className="flex flex-wrap gap-4 items-center">
-                <div className="bg-white bg-opacity-20 backdrop-blur-sm px-5 py-3 rounded-xl border border-white border-opacity-30">
-                  <p className="text-blue-100 text-sm">Welcome back,</p>
-                  <p className="text-white font-bold text-lg">{user.name}</p>
-                </div>
-                <div className="bg-green-500 bg-opacity-90 px-5 py-3 rounded-xl">
-                  <p className="text-white font-semibold flex items-center gap-2">
-                    <Award size={20} />
-                    {paidCourses.length} Course{paidCourses.length !== 1 ? 's' : ''} Owned
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Success Message */}
+        {/* Success/Message Box */}
         {message && (
           <div
             className={`rounded-xl shadow-lg p-5 mb-8 border-l-4 ${
@@ -264,6 +443,43 @@ fetch(`${API_BASE}/get_paid_courses.php`, {
           </div>
         )}
 
+        {/* Hero Section */}
+        <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 rounded-3xl shadow-2xl p-8 sm:p-12 mb-8 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-white opacity-5 rounded-full -mr-48 -mt-48"></div>
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-white opacity-5 rounded-full -ml-32 -mb-32"></div>
+
+          <div className="relative z-10">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-white bg-opacity-20 p-3 rounded-xl backdrop-blur-sm">
+                <TrendingUp className="text-white" size={32} />
+              </div>
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white">
+                Premium Courses
+              </h1>
+            </div>
+            <p className="text-blue-100 text-lg sm:text-xl max-w-3xl mb-6">
+              Master competitive exams with our comprehensive test series and
+              study materials
+            </p>
+
+            {user && (
+              <div className="flex flex-wrap gap-4 items-center">
+                <div className="bg-white bg-opacity-20 backdrop-blur-sm px-5 py-3 rounded-xl border border-white border-opacity-30">
+                  <p className="text-blue-100 text-sm">Welcome back,</p>
+                  <p className="text-white font-bold text-lg">{user.name}</p>
+                </div>
+                <div className="bg-green-500 bg-opacity-90 px-5 py-3 rounded-xl">
+                  <p className="text-white font-semibold flex items-center gap-2">
+                    <Award size={20} />
+                    {paidCourses.length} Course
+                    {paidCourses.length !== 1 ? "s" : ""} Owned
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* My Courses Section */}
         {paidCourses.length > 0 && (
           <div className="mb-12">
@@ -275,156 +491,15 @@ fetch(`${API_BASE}/get_paid_courses.php`, {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {paidCourses.map((course) => (
-                <CourseCard 
-                  key={course.id} 
-                  course={course} 
+                <CourseCard
+                  key={course.id}
+                  course={course}
                   onBuy={handlePayment}
                   onAccess={() => navigate(`/test-series?course=${course.id}`)}
                   isLoading={paymentLoading === course.id}
                 />
               ))}
             </div>
-          </div>
-        )}
-
-        
-      </div>
-    </div>
-  );
-}
-
-/* ================= COURSE CARD COMPONENT ================= */
-function CourseCard({ 
-  course, 
-  onBuy,
-  onAccess,
-  isLoading 
-}: { 
-  course: Course; 
-  onBuy: (course: Course) => void;
-  onAccess: () => void;
-  isLoading: boolean;
-}) {
-  // Format expiry date
-  const formatExpiryDate = (dateString?: string) => {
-    if (!dateString) return null;
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-IN', { 
-      day: 'numeric', 
-      month: 'short', 
-      year: 'numeric' 
-    });
-  };
-
-  return (
-    <div className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all transform hover:-translate-y-2 duration-300">
-      {/* Image */}
-      <div className="relative h-48 bg-gradient-to-br from-blue-500 to-indigo-600 overflow-hidden">
-        {course.image ? (
-          <img 
-            src={course.image} 
-            alt={course.course_name}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <BookOpen className="text-white opacity-50" size={64} />
-          </div>
-        )}
-        
-        {/* Paid Badge with Expiry */}
-        {course.paid && (
-          <div className="absolute top-4 right-4 flex flex-col gap-2">
-            <div className="bg-green-500 text-white px-4 py-2 rounded-full flex items-center gap-2 shadow-lg">
-              <CheckCircle size={18} />
-              <span className="font-bold text-sm">Owned</span>
-            </div>
-            
-            {/* Days Remaining Badge */}
-            {course.days_remaining !== undefined && course.days_remaining !== null && (
-              <div 
-                className={`px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg text-xs font-semibold ${
-                  course.days_remaining <= 7 
-                    ? 'bg-red-500 text-white animate-pulse' 
-                    : course.days_remaining <= 15
-                    ? 'bg-yellow-500 text-white'
-                    : 'bg-white text-gray-700'
-                }`}
-              >
-                <Calendar size={14} />
-                <span>{course.days_remaining} day{course.days_remaining !== 1 ? 's' : ''} left</span>
-              </div>
-            )}
-          </div>
-        )}
-        
-        {/* Lock Badge */}
-        {!course.paid && (
-          <div className="absolute top-4 right-4 bg-white bg-opacity-90 text-gray-700 px-4 py-2 rounded-full flex items-center gap-2 shadow-lg">
-            <Lock size={18} />
-            <span className="font-bold text-sm">Locked</span>
-          </div>
-        )}
-      </div>
-
-      {/* Content */}
-      <div className="p-6">
-        <h3 className="text-xl font-bold text-gray-800 mb-3 line-clamp-2">
-          {course.course_name}
-        </h3>
-        
-        <p className="text-gray-600 text-sm mb-4 line-clamp-3">
-          {course.description || "Comprehensive course with detailed study materials and practice tests"}
-        </p>
-
-        {/* Expiry Info for Paid Courses */}
-        {course.paid && course.expiry_date && (
-          <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="flex items-center gap-2 text-sm">
-              <Calendar size={16} className="text-blue-600" />
-              <div>
-                <p className="text-blue-800 font-semibold">Access expires on:</p>
-                <p className="text-blue-600">{formatExpiryDate(course.expiry_date)}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Stats */}
-        <div className="flex items-center gap-4 mb-4 text-sm text-gray-500">
-          <div className="flex items-center gap-2">
-            <Clock size={16} />
-            <span>{course.duration || "Self-paced"}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Star size={16} className="text-yellow-500 fill-yellow-500" />
-            <span>4.8</span>
-          </div>
-        </div>
-
-        {/* Price & Action */}
-        {course.paid ? (
-          <button
-            onClick={onAccess}
-            className="block w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white text-center py-4 rounded-xl font-bold text-lg transition-all shadow-md"
-          >
-            Access Course →
-          </button>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-2xl font-bold text-blue-600">₹{course.price}</p>
-                <p className="text-xs text-gray-500">1-month access</p>
-              </div>
-            </div>
-            <button
-              onClick={() => onBuy(course)}
-              disabled={isLoading}
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-3 px-6 rounded-xl font-bold transition-all shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {isLoading ? "Processing..." : "Buy Now"}
-            </button>
           </div>
         )}
       </div>
