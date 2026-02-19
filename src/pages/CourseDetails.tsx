@@ -12,13 +12,11 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 
 /* ================= CONFIG ================= */
-
 const API_BASE = "https://xiadot.com/admin_maths/api";
 const RAZORPAY_KEY = "rzp_live_Remrhpj0npbETD";
 const DEFAULT_IMG = "/default-unit.png";
 
 /* ================= TYPES ================= */
-
 interface Course {
   id: number;
   course_name: string;
@@ -31,6 +29,7 @@ interface Course {
   paid?: boolean;
   remaining_seconds?: number | null;
   highlights?: string[];
+  youtube_url?: string | null;
 }
 
 interface ApiResponse {
@@ -38,17 +37,44 @@ interface ApiResponse {
   courses: Course[];
 }
 
-// Placeholder for course content – replace with your actual component
+// Placeholder for course content
 const CourseContent = ({ courseId }: { courseId: number }) => (
   <div className="bg-white p-6 rounded-xl shadow-sm">
     <h2 className="text-2xl font-bold mb-4">Course Content</h2>
     <p>Access granted! Course ID: {courseId}</p>
-    {/* Render lessons, videos, etc. */}
   </div>
 );
 
-/* ================= COMPONENT ================= */
+/* ================= YOUTUBE EMBED HELPER ================= */
+function getYouTubeEmbedUrl(input: string): string | null {
+  if (!input) return null;
 
+  // Extract src if input is an iframe HTML
+  const iframeSrcMatch = input.match(/src="([^"]+)"/);
+  const url = iframeSrcMatch ? iframeSrcMatch[1] : input;
+
+  // Extract video ID from various YouTube formats
+  const patterns = [
+    /youtube\.com\/watch\?v=([^&]+)/,
+    /youtu\.be\/([^?]+)/,
+    /youtube\.com\/embed\/([^?]+)/,
+    /youtube\.com\/shorts\/([^?]+)/,
+    /youtube\.com\/v\/([^?]+)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match && match[1]) {
+      const videoId = match[1];
+      return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1`;
+    }
+  }
+
+  console.warn("Could not extract YouTube video ID from:", input);
+  return null;
+}
+
+/* ================= COMPONENT ================= */
 export default function CourseDetails() {
   const { slug } = useParams();
   const navigate = useNavigate();
@@ -58,7 +84,7 @@ export default function CourseDetails() {
   const [loadingPage, setLoadingPage] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Access status (matches backend responses)
+  // Access status
   const [accessStatus, setAccessStatus] = useState<
     "loading" | "active" | "expired" | "not_purchased"
   >("loading");
@@ -73,11 +99,11 @@ export default function CourseDetails() {
   // Countdown timer
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
+  // Video embed URL
+  const [embedUrl, setEmbedUrl] = useState<string | null>(null);
+
   // Prevent duplicate payment intents
   const paymentLock = useRef(false);
-
-  // Popup reminder every 10 minutes
-  const [showReminderPopup, setShowReminderPopup] = useState(false);
 
   // Safely parse user from localStorage
   const getUser = () => {
@@ -91,18 +117,14 @@ export default function CourseDetails() {
   const user = getUser();
 
   /* ========== 1. FETCH COURSE ========== */
-
   useEffect(() => {
     const loadCourse = async () => {
       try {
         if (!slug) throw new Error("Invalid URL");
-
-        // Extract numeric ID from slug (e.g., "42-course-name" → "42")
         const idMatch = slug.match(/^(\d+)/);
         if (!idMatch) throw new Error("Invalid course URL");
         const id = idMatch[1];
 
-        // Include user_id so backend can return personalized fields (paid, remaining_seconds)
         const user_id = localStorage.getItem("user_id") || "";
         const url = `${API_BASE}/get_courses.php?user_id=${encodeURIComponent(user_id)}`;
         const res = await fetch(url);
@@ -121,15 +143,12 @@ export default function CourseDetails() {
         setLoadingPage(false);
       }
     };
-
     loadCourse();
   }, [slug]);
 
-  /* ========== 2. CHECK ACCESS STATUS (matches validate_course.php) ========== */
-
+  /* ========== 2. CHECK ACCESS STATUS ========== */
   useEffect(() => {
     if (!course) return;
-
     const checkAccess = async () => {
       try {
         const user_id = localStorage.getItem("user_id");
@@ -137,53 +156,40 @@ export default function CourseDetails() {
           setAccessStatus("not_purchased");
           return;
         }
-
-        // GET request works because validate_course.php accepts both POST and GET
         const res = await fetch(
           `${API_BASE}/validate_course.php?user_id=${encodeURIComponent(user_id)}&course_id=${course.id}`,
         );
         const data = await res.json();
-
-        // Backend returns { status: "active" | "expired" | "not_purchased" }
         setAccessStatus(data.status || "not_purchased");
       } catch {
-        // On network error, assume not purchased
         setAccessStatus("not_purchased");
       }
     };
-
     checkAccess();
   }, [course]);
 
   /* ========== 3. COUNTDOWN TIMER ========== */
-
   useEffect(() => {
     if (timeLeft === null || timeLeft <= 0 || !course?.paid) return;
-
     const timer = setInterval(() => {
       setTimeLeft((prev) => (prev !== null && prev > 0 ? prev - 1 : 0));
     }, 1000);
-
     return () => clearInterval(timer);
   }, [timeLeft, course?.paid]);
 
   /* ========== 4. LOAD RAZORPAY SCRIPT ========== */
-
   useEffect(() => {
     if ((window as any).Razorpay) return;
-
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
     script.async = true;
     document.body.appendChild(script);
-
     return () => {
       document.body.removeChild(script);
     };
   }, []);
 
   /* ========== 5. REFETCH COURSE AFTER PURCHASE ========== */
-
   const refetchCourse = async () => {
     if (!course) return;
     try {
@@ -204,7 +210,6 @@ export default function CourseDetails() {
   };
 
   /* ========== 6. BUY NOW HANDLER ========== */
-
   const handleBuyNow = async () => {
     if (!course) return;
     if (course.paid) {
@@ -222,9 +227,7 @@ export default function CourseDetails() {
     setPaymentStatus({ type: null });
 
     try {
-      const amount = course.offer_price * 100; // Razorpay expects paise
-
-      // 1. Create order
+      const amount = course.offer_price * 100;
       const orderRes = await fetch(`${API_BASE}/create_order.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -233,7 +236,6 @@ export default function CourseDetails() {
       if (!orderRes.ok) throw new Error("Failed to create order");
       const order = await orderRes.json();
 
-      // 2. Configure Razorpay
       const options = {
         key: RAZORPAY_KEY,
         amount: order.amount,
@@ -253,10 +255,9 @@ export default function CourseDetails() {
               }),
             });
             const verify = await verifyRes.json();
-
             if (verify.success) {
               setPaymentStatus({ type: "success" });
-              await refetchCourse(); // refresh course data
+              await refetchCourse();
             } else {
               setPaymentStatus({
                 type: "failed",
@@ -272,13 +273,11 @@ export default function CourseDetails() {
         },
         modal: {
           ondismiss: () => {
-            // User closed the Razorpay modal without completing
             setLoadingPay(false);
             paymentLock.current = false;
           },
         },
       };
-
       const razorpay = new (window as any).Razorpay(options);
       razorpay.open();
     } catch (err: any) {
@@ -291,35 +290,18 @@ export default function CourseDetails() {
     }
   };
 
-  /* ========== 7. HELPER: FORMAT TIME (SAFE) ========== */
-
-  const formatTime = (seconds: number): string => {
-    // Ensure we never show negative time
-    if (seconds < 0) seconds = 0;
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-  };
-
-  /* ========== 8. EVERY 10 MINUTES POPUP ========== */
-
+  /* ========== 7. GENERATE EMBED URL ========== */
   useEffect(() => {
-    // Optionally restrict to active courses only:
-    // if (accessStatus !== 'active') return;
+    if (course?.youtube_url) {
+      const url = getYouTubeEmbedUrl(course.youtube_url);
+      setEmbedUrl(url);
+      console.log("Embed URL generated:", url);
+    } else {
+      setEmbedUrl(null);
+    }
+  }, [course]);
 
-    const interval = setInterval(
-      () => {
-        setShowReminderPopup(true);
-      },
-      10 * 60 * 1000,
-    ); // 10 minutes in milliseconds
-
-    return () => clearInterval(interval);
-  }, [accessStatus]); // Re-run if accessStatus changes (if using condition)
-
-  /* ========== 9. UI STATES ========== */
-
+  /* ========== 8. UI STATES ========== */
   if (loadingPage) {
     return (
       <div className="min-h-screen flex justify-center items-center">
@@ -337,7 +319,6 @@ export default function CourseDetails() {
     );
   }
 
-  // Payment status banner (toast style)
   const renderPaymentStatus = () => {
     if (!paymentStatus.type) return null;
     const isSuccess = paymentStatus.type === "success";
@@ -363,13 +344,11 @@ export default function CourseDetails() {
     );
   };
 
-  /* ========== 10. MAIN UI ========== */
-
   return (
     <div className="min-h-screen bg-[#eef5f4]">
       {renderPaymentStatus()}
 
-      {/* HEADER */}
+      {/* Header */}
       <div className="bg-white shadow-sm py-4 px-6 flex items-center gap-3">
         <button onClick={() => navigate(-1)}>
           <ArrowLeft />
@@ -379,19 +358,18 @@ export default function CourseDetails() {
 
       <div className="max-w-6xl mx-auto p-6">
         <div className="bg-white rounded-3xl shadow-md p-6 grid md:grid-cols-2 gap-8">
-          {/* IMAGE */}
+          {/* Image */}
           <img
             src={course.image_url || DEFAULT_IMG}
             alt={course.course_name}
             className="rounded-2xl w-full object-cover"
           />
 
-          {/* RIGHT CONTENT */}
+          {/* Right content */}
           <div className="flex flex-col justify-between">
             <div>
               <h1 className="text-3xl font-bold mb-3">{course.course_name}</h1>
 
-              {/* DESCRIPTION */}
               {course.description && (
                 <div className="bg-gray-50 p-4 rounded-xl mb-6">
                   <h3 className="font-semibold mb-2">Description</h3>
@@ -399,26 +377,13 @@ export default function CourseDetails() {
                 </div>
               )}
 
-              {/* COUNTDOWN TIMER – only for purchased courses with remaining time */}
-              {course.paid && timeLeft !== null && timeLeft > 0 && (
-                <div className="bg-yellow-100 p-4 rounded-xl mb-6 border border-yellow-300">
-                  <h3 className="font-semibold mb-2 flex items-center gap-2">
-                    <Clock size={20} /> Time Remaining
-                  </h3>
-                  <div className="text-2xl font-mono font-bold text-yellow-800">
-                    {formatTime(timeLeft)}
-                  </div>
-                </div>
-              )}
-
-              {/* ACCESS STATUS HANDLING – uses data from validate_course.php */}
+              {/* Access status */}
               {accessStatus === "loading" && (
                 <div className="bg-gray-100 p-4 rounded-xl mb-6 flex items-center gap-2">
                   <Loader size={18} className="animate-spin" /> Checking
                   access...
                 </div>
               )}
-
               {accessStatus === "expired" && (
                 <div className="bg-red-100 p-6 text-center rounded-xl mb-6 border border-red-300">
                   <h2 className="text-red-600 font-bold text-xl">
@@ -429,12 +394,11 @@ export default function CourseDetails() {
                   </p>
                 </div>
               )}
-
               {accessStatus === "active" && (
                 <CourseContent courseId={course.id} />
               )}
 
-              {/* PRICE – only show if not purchased */}
+              {/* Price */}
               {!course.paid && (
                 <div className="bg-green-50 rounded-xl p-4 mb-6">
                   <div className="flex items-center gap-3">
@@ -442,7 +406,6 @@ export default function CourseDetails() {
                       <IndianRupee size={18} />
                       {course.offer_price}
                     </div>
-
                     {course.actual_price > course.offer_price && (
                       <div className="flex items-center text-gray-400 line-through text-lg">
                         <IndianRupee size={16} />
@@ -450,7 +413,6 @@ export default function CourseDetails() {
                       </div>
                     )}
                   </div>
-
                   {course.discount > 0 && (
                     <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded mt-2 inline-block">
                       {course.discount}% OFF
@@ -459,7 +421,7 @@ export default function CourseDetails() {
                 </div>
               )}
 
-              {/* DURATION (static) – only for unpaid courses (dynamic based on purchase) */}
+              {/* Duration */}
               {!course.paid && course.duration && (
                 <div className="bg-gray-100 rounded-xl p-4 mb-6">
                   <p className="text-sm text-gray-500 mb-1">Course Duration</p>
@@ -469,9 +431,9 @@ export default function CourseDetails() {
                   </div>
                 </div>
               )}
-            </div>
 
-            {/* HIGHLIGHTS */}
+
+   {/* Highlights */}
             {course.highlights && course.highlights.length > 0 && (
               <div className="bg-blue-50 p-4 rounded-xl mb-6">
                 <h3 className="font-semibold mb-3">Course Highlights</h3>
@@ -489,7 +451,29 @@ export default function CourseDetails() {
               </div>
             )}
 
-            {/* BUY BUTTON – only if not paid */}
+
+
+              {/* Video Preview (inline, below price/duration) */}
+              {course.youtube_url && embedUrl && (
+                <div className="mt-6">
+                  <div className="aspect-video w-full">
+                    <iframe
+                      src={embedUrl}
+                      className="w-full h-full rounded-xl"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      title="Course Preview"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Video is muted – click the speaker to unmute
+                  </p>
+                </div>
+              )}
+            </div>
+
+         
+            {/* Buy button */}
             {!course.paid && (
               <button
                 onClick={handleBuyNow}
@@ -509,7 +493,6 @@ export default function CourseDetails() {
                 )}
               </button>
             )}
-
             {course.paid && (
               <div className="text-green-600 font-semibold mt-6 flex items-center gap-2">
                 <CheckCircle size={20} />
@@ -519,33 +502,6 @@ export default function CourseDetails() {
           </div>
         </div>
       </div>
-
-      {/* EVERY 10 MINUTES REMINDER POPUP */}
-      {showReminderPopup && (
-        <div className="fixed bottom-4 right-4 z-50 bg-white rounded-2xl shadow-2xl p-6 max-w-sm border-l-4 border-blue-500">
-          <div className="flex justify-between items-start">
-            <h3 className="font-bold text-lg flex items-center gap-2">
-              <Clock size={20} className="text-blue-500" />
-              Reminder
-            </h3>
-            <button
-              onClick={() => setShowReminderPopup(false)}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <XCircle size={20} />
-            </button>
-          </div>
-          <p className="mt-3 text-gray-700">
-            You've been on this page for 15 minutes. Keep learning! 📚
-          </p>
-          <button
-            onClick={() => setShowReminderPopup(false)}
-            className="mt-4 w-full bg-blue-500 text-white py-2 rounded-xl font-medium hover:bg-blue-600 transition"
-          >
-            Got it
-          </button>
-        </div>
-      )}
     </div>
   );
 }
