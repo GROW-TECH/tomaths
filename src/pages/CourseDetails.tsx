@@ -14,17 +14,21 @@ import { useNavigate, useParams } from "react-router-dom";
 /* ================= CONFIG ================= */
 const API_BASE = "https://xiadot.com/admin_maths/api";
 const RAZORPAY_KEY = "rzp_live_Remrhpj0npbETD";
-const DEFAULT_IMG = "/default-unit.png";
+const DEFAULT_IMG = "/logo.png";
 
 /* ================= TYPES ================= */
 interface Course {
   id: number;
-  course_name: string;
-  description: string;
-  actual_price: number;
-  offer_price: number;
-  discount: number;
-  duration: string;
+  category_id?: number;
+  name?: string;
+  course_name?: string;
+  description?: string;
+  actual_price?: number;
+  offer_price?: number;
+  price?: number | string;
+  discount?: number;
+  duration?: string;
+  image?: string;
   image_url?: string | null;
   paid?: boolean;
   remaining_seconds?: number | null;
@@ -35,6 +39,20 @@ interface Course {
 interface ApiResponse {
   success: boolean;
   courses: Course[];
+}
+
+interface RazorpaySuccessResponse {
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+}
+
+// Augment Window interface for Razorpay
+declare global {
+  interface Window {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Razorpay: any; // Minimal declaration – can be refined later
+  }
 }
 
 // Placeholder for course content
@@ -120,25 +138,61 @@ export default function CourseDetails() {
   useEffect(() => {
     const loadCourse = async () => {
       try {
+        console.log("🔍 Loading course with slug:", slug);
         if (!slug) throw new Error("Invalid URL");
         const idMatch = slug.match(/^(\d+)/);
         if (!idMatch) throw new Error("Invalid course URL");
         const id = idMatch[1];
+        console.log("📋 Extracted course ID:", id);
 
-        const user_id = localStorage.getItem("user_id") || "";
-        const url = `${API_BASE}/get_courses.php?user_id=${encodeURIComponent(user_id)}`;
-        const res = await fetch(url);
-        const json: ApiResponse = await res.json();
+        // Use the same API as subcategory page
+        const attempts = [
+          // Try different endpoints like in CoursesBySubCategoryPage
+          () =>
+            fetch(`${API_BASE}/get_subCategory.php`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "list", subcategory_id: id }),
+            }),
+          () =>
+            fetch(
+              `${API_BASE}/get_subCategory.php?action=list&subcategory_id=${id}`,
+            ),
+          () =>
+            fetch(
+              `${API_BASE}/get_courses.php?user_id=${localStorage.getItem("user_id") || ""}`,
+            ),
+        ];
 
-        if (!json.success) throw new Error("API error");
+        let found = null;
+        for (const attempt of attempts) {
+          try {
+            const res = await attempt();
+            const json = await res.json();
+            console.log("📊 API response:", json);
 
-        const found = json.courses.find((c) => String(c.id) === id);
+            if (json.success && json.courses) {
+              found = json.courses.find((c: Course) => String(c.id) === id);
+              if (found) break;
+            }
+            if (json.success && json.data) {
+              const courses = json.data.courses || json.data;
+              found = courses.find((c: Course) => String(c.id) === id);
+              if (found) break;
+            }
+          } catch (e) {
+            console.log("❌ Attempt failed:", e);
+          }
+        }
+
+        console.log("✅ Found course:", found);
         if (!found) throw new Error("Course not found");
 
         setCourse(found);
         setTimeLeft(found.remaining_seconds ?? null);
-      } catch (err: any) {
-        setErrorMsg(err.message);
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        setErrorMsg(error.message);
       } finally {
         setLoadingPage(false);
       }
@@ -179,7 +233,7 @@ export default function CourseDetails() {
 
   /* ========== 4. LOAD RAZORPAY SCRIPT ========== */
   useEffect(() => {
-    if ((window as any).Razorpay) return;
+    if (window.Razorpay) return;
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
     script.async = true;
@@ -198,7 +252,7 @@ export default function CourseDetails() {
       const res = await fetch(url);
       const json: ApiResponse = await res.json();
       if (json.success) {
-        const updated = json.courses.find((c) => c.id === course.id);
+        const updated = json.courses.find((c: Course) => c.id === course.id);
         if (updated) {
           setCourse(updated);
           setTimeLeft(updated.remaining_seconds ?? null);
@@ -227,7 +281,15 @@ export default function CourseDetails() {
     setPaymentStatus({ type: null });
 
     try {
-      const amount = course.offer_price * 100;
+      const price = course.offer_price ?? course.price ?? 0;
+      const amount = Number(price) * 100;
+      if (isNaN(amount) || amount <= 0) {
+        alert("Invalid course price. Please contact support.");
+        setLoadingPay(false);
+        paymentLock.current = false;
+        return;
+      }
+
       const orderRes = await fetch(`${API_BASE}/create_order.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -243,7 +305,7 @@ export default function CourseDetails() {
         name: "TO Maths",
         description: course.course_name,
         order_id: order.order_id,
-        handler: async (response: any) => {
+        handler: async (response: RazorpaySuccessResponse) => {
           try {
             const verifyRes = await fetch(`${API_BASE}/verify-payment.php`, {
               method: "POST",
@@ -278,12 +340,13 @@ export default function CourseDetails() {
           },
         },
       };
-      const razorpay = new (window as any).Razorpay(options);
+      const razorpay = new window.Razorpay(options);
       razorpay.open();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error(String(err));
       setPaymentStatus({
         type: "failed",
-        message: err.message || "Payment initiation failed",
+        message: error.message || "Payment initiation failed",
       });
       setLoadingPay(false);
       paymentLock.current = false;
@@ -295,7 +358,6 @@ export default function CourseDetails() {
     if (course?.youtube_url) {
       const url = getYouTubeEmbedUrl(course.youtube_url);
       setEmbedUrl(url);
-      console.log("Embed URL generated:", url);
     } else {
       setEmbedUrl(null);
     }
@@ -318,6 +380,13 @@ export default function CourseDetails() {
       </div>
     );
   }
+
+  // Pre‑compute values for discount display (fix for line 463)
+  const actualPrice = course.actual_price ?? 0;
+  const offerPrice = course.offer_price ?? course.price ?? 0;
+  const numericOffer =
+    typeof offerPrice === "string" ? parseFloat(offerPrice) : offerPrice;
+  const showDiscount = actualPrice > numericOffer;
 
   const renderPaymentStatus = () => {
     if (!paymentStatus.type) return null;
@@ -360,15 +429,29 @@ export default function CourseDetails() {
         <div className="bg-white rounded-3xl shadow-md p-6 grid md:grid-cols-2 gap-8">
           {/* Image */}
           <img
-            src={course.image_url || DEFAULT_IMG}
-            alt={course.course_name}
+            src={course.image_url || course.image || DEFAULT_IMG}
+            alt={course.course_name || course.name || "Course"}
             className="rounded-2xl w-full object-cover"
           />
 
           {/* Right content */}
           <div className="flex flex-col justify-between">
             <div>
-              <h1 className="text-3xl font-bold mb-3">{course.course_name}</h1>
+              <h1 className="text-3xl font-bold mb-3">
+                {course.course_name || course.name || "Course"}
+              </h1>
+
+              {/* Show message if course details are missing */}
+              {!course.description &&
+                !course.price &&
+                !course.duration &&
+                !course.highlights && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
+                    <p className="text-yellow-800">
+                      Course details are being updated. Please check back later.
+                    </p>
+                  </div>
+                )}
 
               {course.description && (
                 <div className="bg-gray-50 p-4 rounded-xl mb-6">
@@ -401,19 +484,20 @@ export default function CourseDetails() {
               {/* Price */}
               {!course.paid && (
                 <div className="bg-green-50 rounded-xl p-4 mb-6">
+                  <h3 className="font-semibold mb-3">Course Price</h3>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center text-green-700 text-3xl font-bold">
                       <IndianRupee size={18} />
-                      {course.offer_price}
+                      {offerPrice}
                     </div>
-                    {course.actual_price > course.offer_price && (
+                    {showDiscount && (
                       <div className="flex items-center text-gray-400 line-through text-lg">
                         <IndianRupee size={16} />
-                        {course.actual_price}
+                        {actualPrice}
                       </div>
                     )}
                   </div>
-                  {course.discount > 0 && (
+                  {course.discount && (
                     <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded mt-2 inline-block">
                       {course.discount}% OFF
                     </span>
@@ -432,30 +516,28 @@ export default function CourseDetails() {
                 </div>
               )}
 
+              {/* Highlights */}
+              {course.highlights && course.highlights.length > 0 && (
+                <div className="bg-blue-50 p-4 rounded-xl mb-6">
+                  <h3 className="font-semibold mb-3">Course Highlights</h3>
+                  <ul className="space-y-2">
+                    {course.highlights.map((item, index) => (
+                      <li
+                        key={index}
+                        className="flex items-start gap-2 text-gray-700"
+                      >
+                        <CheckCircle size={18} className="text-blue-600 mt-1" />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-   {/* Highlights */}
-            {course.highlights && course.highlights.length > 0 && (
-              <div className="bg-blue-50 p-4 rounded-xl mb-6">
-                <h3 className="font-semibold mb-3">Course Highlights</h3>
-                <ul className="space-y-2">
-                  {course.highlights.map((item, index) => (
-                    <li
-                      key={index}
-                      className="flex items-start gap-2 text-gray-700"
-                    >
-                      <CheckCircle size={18} className="text-blue-600 mt-1" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-
-
-              {/* Video Preview (inline, below price/duration) */}
+              {/* Video Preview */}
               {course.youtube_url && embedUrl && (
-                <div className="mt-6">
+                <div className="bg-gray-50 p-4 rounded-xl mb-6">
+                  <h3 className="font-semibold mb-3">Course Preview</h3>
                   <div className="aspect-video w-full">
                     <iframe
                       src={embedUrl}
@@ -472,7 +554,6 @@ export default function CourseDetails() {
               )}
             </div>
 
-         
             {/* Buy button */}
             {!course.paid && (
               <button

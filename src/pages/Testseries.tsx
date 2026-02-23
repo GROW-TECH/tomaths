@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   CheckCircle,
   XCircle,
@@ -33,6 +34,9 @@ const API_BASE = "https://xiadot.com/admin_maths/api";
 const RAZORPAY_KEY = "rzp_live_Remrhpj0npbETD";
 
 export default function TestSeriesPage() {
+  const [searchParams] = useSearchParams();
+  const courseId = searchParams.get('course');
+  
   const [user, setUser] = useState<User | null>(null);
   const [enrolled, setEnrolled] = useState(false);
   const [tests, setTests] = useState<Test[]>([]);
@@ -40,15 +44,10 @@ export default function TestSeriesPage() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"success" | "error" | "info">("info");
+  const [courseInfo, setCourseInfo] = useState<Course | null>(null);
 
   // ========== NEW: State for iframe modal ==========
   const [selectedTest, setSelectedTest] = useState<Test | null>(null);
-
-  const course: Course = {
-    id: 8,
-    title: "Geometry - Aptitude Topic wise Test-Series + PDF",
-    price: 1,
-  };
 
   /* ================= LOAD USER & CHECK ENROLLMENT ================= */
   useEffect(() => {
@@ -57,7 +56,11 @@ export default function TestSeriesPage() {
       try {
         const userData = JSON.parse(storedUser);
         setUser(userData);
-        checkEnrollment(userData.id);
+        if (courseId) {
+          loadCourseInfo(courseId, userData.id);
+        } else {
+          setLoading(false);
+        }
       } catch (e) {
         console.error("Failed to parse user", e);
         setLoading(false);
@@ -65,24 +68,50 @@ export default function TestSeriesPage() {
     } else {
       setLoading(false);
     }
-  }, []);
+  }, [courseId]);
+
+  /* ================= LOAD COURSE INFO ================= */
+  const loadCourseInfo = (courseId: string, userId: number) => {
+    fetch(`${API_BASE}/get_course_info.php`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ course_id: courseId }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.course) {
+          setCourseInfo(data.course);
+          checkEnrollment(userId, parseInt(courseId));
+        } else {
+          setMessage("Course not found");
+          setMessageType("error");
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load course info:", err);
+        setMessage("Failed to load course");
+        setMessageType("error");
+        setLoading(false);
+      });
+  };
 
   /* ================= CHECK ENROLLMENT ================= */
-  const checkEnrollment = (userId: number) => {
+  const checkEnrollment = (userId: number, courseId: number) => {
     setLoading(true);
     fetch(`${API_BASE}/check_enrollment.php`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         user_id: userId,
-        course_id: course.id,
+        course_id: courseId,
       }),
     })
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.enrolled) {
           setEnrolled(true);
-          loadTests(userId);
+          loadTests(userId, courseId);
         } else {
           setEnrolled(false);
           setLoading(false);
@@ -97,13 +126,13 @@ export default function TestSeriesPage() {
   };
 
   /* ================= LOAD TESTS ================= */
-  const loadTests = (userId: number) => {
+  const loadTests = (userId: number, courseId: number) => {
     fetch(`${API_BASE}/get_tests.php`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         user_id: userId,
-        course_id: course.id,
+        course_id: courseId,
       }),
     })
       .then((res) => res.json())
@@ -127,7 +156,7 @@ export default function TestSeriesPage() {
 
   /* ================= PAYMENT HANDLER ================= */
   const handlePayment = () => {
-    if (!user) {
+    if (!user || !courseInfo) {
       setMessage("Please login to purchase this course");
       setMessageType("error");
       return;
@@ -139,7 +168,7 @@ export default function TestSeriesPage() {
     fetch(`${API_BASE}/create_order.php`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: course.price }),
+      body: JSON.stringify({ amount: courseInfo?.price || 0 }),
     })
       .then((res) => res.json())
       .then((orderData) => {
@@ -152,7 +181,7 @@ export default function TestSeriesPage() {
           amount: orderData.amount,
           currency: "INR",
           name: "TO Maths",
-          description: course.title,
+          description: courseInfo.title,
           order_id: orderData.order_id,
           handler: (response: any) => {
             verifyPayment(response);
@@ -188,7 +217,7 @@ export default function TestSeriesPage() {
         razorpay_payment_id: response.razorpay_payment_id,
         razorpay_signature: response.razorpay_signature,
         user_id: user?.id,
-        course_id: course.id,
+        course_id: courseInfo?.id || 0,
       }),
     })
       .then((res) => res.json())
@@ -197,8 +226,8 @@ export default function TestSeriesPage() {
           setMessage("✅ Payment successful! Loading your tests...");
           setMessageType("success");
           setEnrolled(true);
-          if (user) {
-            loadTests(user.id);
+          if (user && courseInfo) {
+            loadTests(user.id, courseInfo.id);
           }
         } else {
           setMessage(data.message || "Payment verification failed");
@@ -258,7 +287,7 @@ export default function TestSeriesPage() {
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-8 text-white">
               <div className="flex items-center gap-3 mb-4">
                 <Lock size={32} />
-                <h1 className="text-3xl font-bold">{course.title}</h1>
+                <h1 className="text-3xl font-bold">{courseInfo?.title || "Loading Course..."}</h1>
               </div>
               <p className="text-blue-100">
                 Get access to comprehensive test series and study materials
@@ -314,7 +343,7 @@ export default function TestSeriesPage() {
                   <div>
                     <p className="text-gray-600 mb-1">Course Price</p>
                     <p className="text-4xl font-bold text-blue-600">
-                      ₹{course.price}
+                      ₹{courseInfo?.price || 0}
                     </p>
                   </div>
                   <button
@@ -345,7 +374,7 @@ export default function TestSeriesPage() {
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
           <div className="flex items-center gap-3 mb-2">
             <BookOpen size={32} className="text-blue-600" />
-            <h1 className="text-3xl font-bold">{course.title}</h1>
+            <h1 className="text-3xl font-bold">{courseInfo?.title || "Loading Course..."}</h1>
           </div>
           <p className="text-gray-600">
             Welcome back, <span className="font-semibold">{user.name}</span>! You have access to all tests.

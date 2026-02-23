@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 const API_BASE = "https://xiadot.com/admin_maths/api";
 const SITE_BASE = "https://xiadot.com";
-const DEFAULT_IMG = "/default-unit.png";
+const DEFAULT_IMG = "/logo.png";
 
 type RawItem = Record<string, any>;
 
@@ -41,6 +41,9 @@ function normalizeImageUrl(val: any): string | null {
   if (s.startsWith("uploads/")) return `${SITE_BASE}/admin_maths/${s}`;
   if (s.startsWith("admin_maths/")) return `${SITE_BASE}/${s}`;
 
+  // Debug log to see what URLs are being generated
+  console.log("🔍 Normalizing image:", val, "→", `${SITE_BASE}/admin_maths/uploads/${s}`);
+  
   return `${SITE_BASE}/admin_maths/uploads/${s}`;
 }
 
@@ -80,13 +83,18 @@ function normalizeList(data: any): UiCategory[] {
         ? data.items
         : [];
 
-  return arr
+  const result = arr
     .map((item) => ({
       id: safeId(item),
       name: safeName(item),
       image_url: safeImage(item),
     }))
     .filter((x) => x.id !== 0);
+
+  // Debug log to see what data we're getting
+  console.log("📋 Normalized categories:", result);
+  
+  return result;
 }
 
 export default function ExamDetails() {
@@ -100,6 +108,12 @@ export default function ExamDetails() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Test if default image loads
+    const testImg = new Image();
+    testImg.onload = () => console.log("✅ Default image (logo.png) loads successfully");
+    testImg.onerror = () => console.log("❌ Default image (logo.png) failed to load");
+    testImg.src = DEFAULT_IMG;
+
     if (examIdNum === null) {
       setLoading(false);
       setError("Exam id missing / invalid in URL");
@@ -114,8 +128,13 @@ export default function ExamDetails() {
         setError(null);
 
         const url = `${API_BASE}/get_Category.php?action=list&category_id=${examIdNum}`;
+        console.log("🌐 Fetching URL:", url);
+        
         const res = await fetch(url, { signal: controller.signal });
+        console.log("📡 Response status:", res.status, res.statusText);
+        
         const text = await res.text();
+        console.log("📄 Raw response:", text);
 
         let json: ApiResponse;
         try {
@@ -127,9 +146,16 @@ export default function ExamDetails() {
           );
         }
 
-        if (!json.success) throw new Error(json.message || "API failed");
+        console.log("📋 Parsed JSON:", json);
+        
+        if (!json.success) {
+          console.log("❌ API failed:", json.message);
+          throw new Error(json.message || "API failed");
+        }
 
+        console.log("📊 Raw API data:", json.data);
         const normalized = normalizeList(json.data);
+        console.log("🎯 Final categories to render:", normalized);
         setCats(normalized);
       } catch (e: any) {
         if (e?.name === "AbortError") return;
@@ -149,11 +175,14 @@ export default function ExamDetails() {
     return (
       <div className="min-h-screen bg-[#ffffff] flex items-center justify-center px-3 py-6">
         <div className="bg-white px-6 py-4 rounded-2xl shadow-lg font-lightbold text-[#1f2a44]">
-          Loading...
+          Loading... Exam ID: {examIdNum}
         </div>
       </div>
     );
   }
+
+  // Debug render
+  console.log("🔍 Rendering with:", { examIdNum, cats: cats.length, error });
 
   return (
     <>
@@ -187,7 +216,7 @@ export default function ExamDetails() {
               {cats.map((c) => (
                 <div
                   key={c.id}
-                  onClick={() => navigate(`/courses/subcategory/${c.id}`)}
+                  onClick={() => navigate(`/courses/subcategory/${c.id}/${examIdNum}`)}
                   className="bg-white rounded-2xl shadow-xl hover:shadow-2xl transition cursor-pointer overflow-hidden"
                 >
                   <div className="h-40 w-full bg-gray-100 flex items-center justify-center">
@@ -195,7 +224,11 @@ export default function ExamDetails() {
                       src={c.image_url || DEFAULT_IMG}
                       alt={c.name}
                       className="h-32 object-contain"
-                      onError={(e) => (e.currentTarget.src = DEFAULT_IMG)}
+                      onLoad={() => console.log("✅ Image loaded:", c.image_url)}
+                      onError={(e) => {
+                        console.log("❌ Image failed to load:", c.image_url);
+                        e.currentTarget.src = DEFAULT_IMG;
+                      }}
                     />
                   </div>
                   <div className="p-4">
@@ -235,15 +268,15 @@ export default function ExamDetails() {
 
           {/* HERO IMAGE */}
           <div className="mb-6">
-            <img
-              src="/books.png"
-              alt="Hero"
-              className="w-full h-[180px] object-cover rounded-2xl shadow-xl"
-              onError={(e) => (e.currentTarget.style.display = "none")}
-            />
+            <div className="w-full h-[180px] bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl shadow-xl flex items-center justify-center">
+              <div className="text-center">
+                <div className="text-4xl mb-2">📚</div>
+                <p className="text-gray-600 font-medium">Syllabus Patterns</p>
+              </div>
+            </div>
           </div>
 
-          {/* ERROR / EMPTY / LIST */}
+        {/* ERROR / EMPTY / LIST */}
           {error ? (
             <div className="bg-white rounded-2xl p-4 text-red-700 font-lightbold text-center shadow">
               {error}
@@ -282,7 +315,11 @@ export default function ExamDetails() {
                     src={c.image_url || DEFAULT_IMG}
                     alt={c.name}
                     className="w-16 h-16 object-contain mb-3"
-                    onError={(e) => (e.currentTarget.src = DEFAULT_IMG)}
+                    onLoad={() => console.log("✅ Mobile image loaded:", c.image_url)}
+                    onError={(e) => {
+                      console.log("❌ Mobile image failed to load:", c.image_url);
+                      e.currentTarget.src = DEFAULT_IMG;
+                    }}
                   />
 
                   <p className="text-center text-[18px] font-lightbold text-black leading-5">

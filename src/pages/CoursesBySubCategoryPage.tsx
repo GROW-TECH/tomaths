@@ -1,15 +1,17 @@
-import  { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 const API_BASE = "https://xiadot.com/admin_maths/api";
-const DEFAULT_IMG = "/default-unit.png";
+const DEFAULT_IMG = "/logo.png";
 
 type Course = {
   id: number;
-  course_name: string; // ✅ we will ensure this is filled
+  course_name: string;
   image_url: string | null;
   price?: string;
   duration?: string;
+  highlights?: string;
+  description?: string;
 };
 
 type ApiResponse = {
@@ -60,18 +62,19 @@ function normalizeCourses(json: ApiResponse): Course[] {
   }));
 }
 
-function slugify(text: string) {
-  return (text || "")
-    .toLowerCase()
-    .trim()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)+/g, "");
-}
+// function slugify(text: string) {
+//   return (text || "")
+//     .toLowerCase()
+//     .trim()
+//     .replace(/&/g, "and")
+//     .replace(/[^a-z0-9]+/g, "-")
+//     .replace(/(^-|-$)+/g, "");
+// }
 
 /* ================= COMPONENT ================= */
 
 export default function CoursesBySubCategoryPage() {
+  const { examid } = useParams<{ examid: string }>();
   const { subCategoryId } = useParams<{ subCategoryId: string }>();
   const navigate = useNavigate();
 
@@ -224,12 +227,12 @@ export default function CoursesBySubCategoryPage() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8">
             {courses.map((c) => {
               const imgSrc = normalizeImageUrl(c.image_url);
-              const slug = `${c.id}-${slugify(c.course_name)}`;
+              // const courseslug = `${c.id}-${slugify(c.course_name)}`;
 
               return (
                 <div
                   key={c.id}
-                  onClick={() => navigate(`/courses/${slug}`)}
+                  onClick={() => navigate(`/new-courses/${examid}`)}
                   className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition cursor-pointer overflow-hidden"
                 >
                   {/* IMAGE */}
@@ -238,7 +241,9 @@ export default function CoursesBySubCategoryPage() {
                       src={imgSrc}
                       alt={c.course_name}
                       className="h-32 md:h-36 object-contain"
-                      onError={(e) => (e.currentTarget.src = DEFAULT_IMG)}
+                      onError={(e) => {
+                        e.currentTarget.src = DEFAULT_IMG;
+                      }}
                     />
                   </div>
 

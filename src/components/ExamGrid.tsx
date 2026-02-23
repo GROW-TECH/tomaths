@@ -51,7 +51,7 @@ export default function ExamGrid() {
         setLoading(true);
         setError(null);
 
-        const res = await fetch(`${API_BASE}/exam.php?action=list`);
+        const res = await fetch(`${API_BASE}/courses.php?action=list`);
         if (!res.ok) throw new Error("API not reachable");
 
         const json: ApiResponse = await res.json();

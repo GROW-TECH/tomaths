@@ -89,17 +89,19 @@ function CourseCard({
               course.days_remaining !== null && (
                 <div
                   className={`px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg text-xs font-semibold ${
-                    course.days_remaining <= 7
+                    course.days_remaining <= 0.1
                       ? "bg-red-500 text-white animate-pulse"
-                      : course.days_remaining <= 15
+                      : course.days_remaining <= 0.5
                       ? "bg-yellow-500 text-white"
                       : "bg-white text-gray-700"
                   }`}
                 >
                   <Calendar size={14} />
                   <span>
-                    {course.days_remaining} day
-                    {course.days_remaining !== 1 ? "s" : ""} left
+                    {course.days_remaining < 1 
+                      ? `${Math.round(course.days_remaining * 24)} hour${Math.round(course.days_remaining * 24) !== 1 ? 's' : ''} left`
+                      : `${course.days_remaining} day${course.days_remaining !== 1 ? "s" : ""} left`
+                    }
                   </span>
                 </div>
               )}
@@ -227,13 +229,91 @@ export default function PaidCoursesPage() {
       .then((data) => {
         console.log("Courses API response:", data);
         if (data.success && data.courses) {
-          // Filter out expired courses
+          // Filter out expired courses and fix days_remaining
           const filteredCourses = data.courses.filter((course: Course) => {
             if (course.expiry_date) {
               const expiryDate = new Date(course.expiry_date);
               return expiryDate > new Date(); // Only show if expiry date is in the future
             }
             return true; // If no expiry date, show the course
+          }).map((course: Course) => {
+            // Fix days_remaining calculation based on course duration
+            if (course.expiry_date) {
+              const expiryDate = new Date(course.expiry_date);
+              const today = new Date();
+              const diffTime = expiryDate.getTime() - today.getTime();
+              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+              
+              // Parse course duration to determine expected days
+              const durationText = (course.duration || "").toLowerCase();
+              let expectedDays = null;
+              
+              console.log(`Course: ${course.course_name}, Duration: "${course.duration}", Days remaining: ${course.days_remaining}, Expiry: ${course.expiry_date}`);
+              
+              if (durationText.includes('hr') || durationText.includes('hour')) {
+                // Extract number of hours from duration
+                const hourMatch = durationText.match(/(\d+)\s*hr/);
+                if (hourMatch) {
+                  expectedDays = parseInt(hourMatch[1]) / 24; // Convert hours to days
+                  console.log(`Hourly course detected: ${hourMatch[1]} hours = ${expectedDays} days`);
+                } else {
+                  expectedDays = 1 / 24; // Default to 1 hour
+                  console.log(`Default hourly course: 1 hour = ${expectedDays} days`);
+                }
+              } else if (durationText.includes('day')) {
+                // Extract number of days from duration
+                const dayMatch = durationText.match(/(\d+)\s*day/);
+                if (dayMatch) {
+                  expectedDays = parseInt(dayMatch[1]);
+                }
+              } else if (durationText.includes('month')) {
+                // Extract number of months from duration
+                const monthMatch = durationText.match(/(\d+)\s*month/);
+                if (monthMatch) {
+                  expectedDays = parseInt(monthMatch[1]) * 30; // Approximate 30 days per month
+                }
+              }
+              
+              console.log(`Expected days: ${expectedDays}, Current days_remaining: ${course.days_remaining}`);
+              
+              // Always recalculate for hourly courses to ensure accuracy
+              if (expectedDays !== null && (durationText.includes('hr') || durationText.includes('hour'))) {
+                // Recalculate from purchase date for hourly courses
+                const createdAt = course.created_at ? new Date(course.created_at) : today;
+                const expectedExpiry = new Date(createdAt.getTime() + (expectedDays * 24 * 60 * 60 * 1000));
+                const correctedDiffTime = expectedExpiry.getTime() - today.getTime();
+                const correctedDiffDays = correctedDiffTime / (1000 * 60 * 60 * 24);
+                
+                console.log(`Recalculated expiry: ${expectedExpiry}, Corrected days: ${correctedDiffDays}`);
+                
+                return {
+                  ...course,
+                  days_remaining: Math.max(0, correctedDiffDays),
+                  expiry_date: expectedExpiry.toISOString().split('T')[0]
+                };
+              }
+              
+              // For other courses, only fix if days_remaining seems wrong
+              if (expectedDays !== null && course.days_remaining && course.days_remaining > expectedDays * 2) {
+                // Recalculate from purchase date
+                const createdAt = course.created_at ? new Date(course.created_at) : today;
+                const expectedExpiry = new Date(createdAt.getTime() + (expectedDays * 24 * 60 * 60 * 1000));
+                const correctedDiffTime = expectedExpiry.getTime() - today.getTime();
+                const correctedDiffDays = Math.ceil(correctedDiffTime / (1000 * 60 * 60 * 24));
+                
+                return {
+                  ...course,
+                  days_remaining: Math.max(0, correctedDiffDays),
+                  expiry_date: expectedExpiry.toISOString().split('T')[0]
+                };
+              }
+              
+              return {
+                ...course,
+                days_remaining: Math.max(0, diffDays)
+              };
+            }
+            return course;
           });
           setCourses(filteredCourses);
         } else {

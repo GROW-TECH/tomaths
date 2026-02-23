@@ -11,7 +11,7 @@ import CourseDetails from "./pages/CourseDetails";
 import PaidCoursesPage from "./pages/paid-courses";
 import ExamDetails from "./pages/ExamDetails";
 import CoursesBySubCategoryPage from "./pages/CoursesBySubCategoryPage";
-import CourseListPage from "./pages/CourseListPage";
+// import CourseListPage from "./pages/CourseListPage";
 
 import ScrollToTop from "./components/ScrollToTop";
 
@@ -54,7 +54,6 @@ export default function App() {
               </>
             }
           />
-          
 
           {/* ================= PAID COURSES ================= */}
           <Route path="/paid-courses" element={<PaidCoursesPage />} />
@@ -70,12 +69,12 @@ export default function App() {
 
           {/* ================= SUB CATEGORY ================= */}
           <Route
-            path="/courses/subcategory/:subCategoryId"
+            path="/courses/subcategory/:subCategoryId/:examid"
             element={<CoursesBySubCategoryPage />}
           />
 
           {/* ================= COURSE LIST ================= */}
-          <Route path="/courses/:slug" element={<CourseListPage />} />
+          {/* <Route path="/courses/:slug" element={<CourseListPage />} /> */}
         </Routes>
       </main>
 
