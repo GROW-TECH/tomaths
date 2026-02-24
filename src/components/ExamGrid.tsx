@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 type Exam = {
   id: string;
-  exam_name: string;
+  course_name: string;
   subject: string;
   price: string;
   duration: string;
@@ -65,6 +65,7 @@ export default function ExamGrid() {
           image_url: toFullImageUrl(e.image_url),
         }));
 
+        console.log("✅ Loaded exams:", fixed);
         setExams(fixed);
       } catch (e: any) {
         setError(e.message || "Failed");
@@ -103,14 +104,14 @@ export default function ExamGrid() {
                   src={exam.image_url || FALLBACK_EXAM}
                   onError={handleExamImgError}
                   className="w-full h-full object-cover"
-                  alt={exam.exam_name}
+                  alt={exam.course_name}
                   loading="lazy"
                 />
               </div>
 
               <div className="p-5">
                 <h3 className="text-xl font-lightbold text-gray-900 line-clamp-2">
-                  {exam.exam_name}
+                  {exam.course_name}
                 </h3>
               </div>
             </div>

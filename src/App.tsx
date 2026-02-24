@@ -69,7 +69,7 @@ export default function App() {
 
           {/* ================= SUB CATEGORY ================= */}
           <Route
-            path="/courses/subcategory/:subCategoryId/:examid"
+            path="/courses/subcategory/:examid"
             element={<CoursesBySubCategoryPage />}
           />
 

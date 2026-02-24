@@ -216,7 +216,9 @@ export default function ExamDetails() {
               {cats.map((c) => (
                 <div
                   key={c.id}
-                  onClick={() => navigate(`/courses/subcategory/${c.id}/${examIdNum}`)}
+                  onClick={() =>{
+navigate(`/courses/subcategory/${examIdNum}`);
+                  } }
                   className="bg-white rounded-2xl shadow-xl hover:shadow-2xl transition cursor-pointer overflow-hidden"
                 >
                   <div className="h-40 w-full bg-gray-100 flex items-center justify-center">
@@ -291,7 +293,7 @@ export default function ExamDetails() {
                 <div
                   key={c.id}
                   onClick={() => {
-                    navigate(`/courses/subcategory/${c.id}`);
+                    navigate(`/courses/subcategory/${examIdNum}`);
                     window.scrollTo({
                       top: 0,
                       left: 0,
