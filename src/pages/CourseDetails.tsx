@@ -13,7 +13,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 /* ================= CONFIG ================= */
 const API_BASE = "https://xiadot.com/admin_maths/api";
-const RAZORPAY_KEY = "rzp_live_Remrhpj0npbETD";
+const RAZORPAY_KEY = "rzp_live_SKO5Abo716VLoY";
 const DEFAULT_IMG = "/logo.png";
 
 /* ================= TYPES ================= */
@@ -47,15 +47,12 @@ interface RazorpaySuccessResponse {
   razorpay_signature: string;
 }
 
-// Augment Window interface for Razorpay
 declare global {
   interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Razorpay: any; // Minimal declaration – can be refined later
+    Razorpay: any;
   }
 }
 
-// Placeholder for course content
 const CourseContent = ({ courseId }: { courseId: number }) => (
   <div className="bg-white p-6 rounded-xl shadow-sm">
     <h2 className="text-2xl font-bold mb-4">Course Content</h2>
@@ -63,15 +60,10 @@ const CourseContent = ({ courseId }: { courseId: number }) => (
   </div>
 );
 
-/* ================= YOUTUBE EMBED HELPER ================= */
 function getYouTubeEmbedUrl(input: string): string | null {
   if (!input) return null;
-
-  // Extract src if input is an iframe HTML
   const iframeSrcMatch = input.match(/src="([^"]+)"/);
   const url = iframeSrcMatch ? iframeSrcMatch[1] : input;
-
-  // Extract video ID from various YouTube formats
   const patterns = [
     /youtube\.com\/watch\?v=([^&]+)/,
     /youtu\.be\/([^?]+)/,
@@ -79,7 +71,6 @@ function getYouTubeEmbedUrl(input: string): string | null {
     /youtube\.com\/shorts\/([^?]+)/,
     /youtube\.com\/v\/([^?]+)/,
   ];
-
   for (const pattern of patterns) {
     const match = url.match(pattern);
     if (match && match[1]) {
@@ -87,43 +78,29 @@ function getYouTubeEmbedUrl(input: string): string | null {
       return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1`;
     }
   }
-
   console.warn("Could not extract YouTube video ID from:", input);
   return null;
 }
 
-/* ================= COMPONENT ================= */
 export default function CourseDetails() {
   const { slug } = useParams();
   const navigate = useNavigate();
 
-  // Core data
   const [course, setCourse] = useState<Course | null>(null);
   const [loadingPage, setLoadingPage] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
-
-  // Access status
   const [accessStatus, setAccessStatus] = useState<
     "loading" | "active" | "expired" | "not_purchased"
   >("loading");
-
-  // Payment states
   const [loadingPay, setLoadingPay] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<{
     type: "success" | "failed" | null;
     message?: string;
   }>({ type: null });
-
-  // Countdown timer
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
-
-  // Video embed URL
   const [embedUrl, setEmbedUrl] = useState<string | null>(null);
-
-  // Prevent duplicate payment intents
   const paymentLock = useRef(false);
 
-  // Safely parse user from localStorage
   const getUser = () => {
     try {
       const stored = localStorage.getItem("user");
@@ -134,20 +111,15 @@ export default function CourseDetails() {
   };
   const user = getUser();
 
-  /* ========== 1. FETCH COURSE ========== */
   useEffect(() => {
     const loadCourse = async () => {
       try {
-        console.log("🔍 Loading course with slug:", slug);
         if (!slug) throw new Error("Invalid URL");
         const idMatch = slug.match(/^(\d+)/);
         if (!idMatch) throw new Error("Invalid course URL");
         const id = idMatch[1];
-        console.log("📋 Extracted course ID:", id);
 
-        // Use the same API as subcategory page
         const attempts = [
-          // Try different endpoints like in CoursesBySubCategoryPage
           () =>
             fetch(`${API_BASE}/get_subCategory.php`, {
               method: "POST",
@@ -169,8 +141,6 @@ export default function CourseDetails() {
           try {
             const res = await attempt();
             const json = await res.json();
-            console.log("📊 API response:", json);
-
             if (json.success && json.courses) {
               found = json.courses.find((c: Course) => String(c.id) === id);
               if (found) break;
@@ -181,13 +151,11 @@ export default function CourseDetails() {
               if (found) break;
             }
           } catch (e) {
-            console.log("❌ Attempt failed:", e);
+            console.log("Attempt failed:", e);
           }
         }
 
-        console.log("✅ Found course:", found);
         if (!found) throw new Error("Course not found");
-
         setCourse(found);
         setTimeLeft(found.remaining_seconds ?? null);
       } catch (err: unknown) {
@@ -200,7 +168,6 @@ export default function CourseDetails() {
     loadCourse();
   }, [slug]);
 
-  /* ========== 2. CHECK ACCESS STATUS ========== */
   useEffect(() => {
     if (!course) return;
     const checkAccess = async () => {
@@ -222,7 +189,6 @@ export default function CourseDetails() {
     checkAccess();
   }, [course]);
 
-  /* ========== 3. COUNTDOWN TIMER ========== */
   useEffect(() => {
     if (timeLeft === null || timeLeft <= 0 || !course?.paid) return;
     const timer = setInterval(() => {
@@ -231,7 +197,6 @@ export default function CourseDetails() {
     return () => clearInterval(timer);
   }, [timeLeft, course?.paid]);
 
-  /* ========== 4. LOAD RAZORPAY SCRIPT ========== */
   useEffect(() => {
     if (window.Razorpay) return;
     const script = document.createElement("script");
@@ -243,7 +208,6 @@ export default function CourseDetails() {
     };
   }, []);
 
-  /* ========== 5. REFETCH COURSE AFTER PURCHASE ========== */
   const refetchCourse = async () => {
     if (!course) return;
     try {
@@ -263,7 +227,6 @@ export default function CourseDetails() {
     }
   };
 
-  /* ========== 6. BUY NOW HANDLER ========== */
   const handleBuyNow = async () => {
     if (!course) return;
     if (course.paid) {
@@ -317,14 +280,21 @@ export default function CourseDetails() {
               }),
             });
             const verify = await verifyRes.json();
+            console.log("Verification response:", verify); // <-- Log full response
+
             if (verify.success) {
               setPaymentStatus({ type: "success" });
               await refetchCourse();
             } else {
+              // Show the actual error message from the server
               setPaymentStatus({
                 type: "failed",
-                message: "Payment verification failed",
+                message: verify.message || "Payment verification failed",
               });
+              // Log SQL error if present (for debugging)
+              if (verify.sql_error) {
+                console.error("SQL Error from server:", verify.sql_error);
+              }
             }
           } catch (err) {
             setPaymentStatus({ type: "failed", message: "Verification error" });
@@ -353,7 +323,6 @@ export default function CourseDetails() {
     }
   };
 
-  /* ========== 7. GENERATE EMBED URL ========== */
   useEffect(() => {
     if (course?.youtube_url) {
       const url = getYouTubeEmbedUrl(course.youtube_url);
@@ -363,7 +332,6 @@ export default function CourseDetails() {
     }
   }, [course]);
 
-  /* ========== 8. UI STATES ========== */
   if (loadingPage) {
     return (
       <div className="min-h-screen flex justify-center items-center">
@@ -381,7 +349,6 @@ export default function CourseDetails() {
     );
   }
 
-  // Pre‑compute values for discount display (fix for line 463)
   const actualPrice = course.actual_price ?? 0;
   const offerPrice = course.offer_price ?? course.price ?? 0;
   const numericOffer =
@@ -417,7 +384,6 @@ export default function CourseDetails() {
     <div className="min-h-screen bg-[#eef5f4]">
       {renderPaymentStatus()}
 
-      {/* Header */}
       <div className="bg-white shadow-sm py-4 px-6 flex items-center gap-3">
         <button onClick={() => navigate(-1)}>
           <ArrowLeft />
@@ -427,21 +393,18 @@ export default function CourseDetails() {
 
       <div className="max-w-6xl mx-auto p-6">
         <div className="bg-white rounded-3xl shadow-md p-6 grid md:grid-cols-2 gap-8">
-          {/* Image */}
           <img
             src={course.image_url || course.image || DEFAULT_IMG}
             alt={course.course_name || course.name || "Course"}
             className="rounded-2xl w-full object-cover"
           />
 
-          {/* Right content */}
           <div className="flex flex-col justify-between">
             <div>
               <h1 className="text-3xl font-bold mb-3">
                 {course.course_name || course.name || "Course"}
               </h1>
 
-              {/* Show message if course details are missing */}
               {!course.description &&
                 !course.price &&
                 !course.duration &&
@@ -460,7 +423,6 @@ export default function CourseDetails() {
                 </div>
               )}
 
-              {/* Access status */}
               {accessStatus === "loading" && (
                 <div className="bg-gray-100 p-4 rounded-xl mb-6 flex items-center gap-2">
                   <Loader size={18} className="animate-spin" /> Checking
@@ -481,7 +443,6 @@ export default function CourseDetails() {
                 <CourseContent courseId={course.id} />
               )}
 
-              {/* Price */}
               {!course.paid && (
                 <div className="bg-green-50 rounded-xl p-4 mb-6">
                   <h3 className="font-semibold mb-3">Course Price</h3>
@@ -505,7 +466,6 @@ export default function CourseDetails() {
                 </div>
               )}
 
-              {/* Duration */}
               {!course.paid && course.duration && (
                 <div className="bg-gray-100 rounded-xl p-4 mb-6">
                   <p className="text-sm text-gray-500 mb-1">Course Duration</p>
@@ -516,7 +476,6 @@ export default function CourseDetails() {
                 </div>
               )}
 
-              {/* Highlights */}
               {course.highlights && course.highlights.length > 0 && (
                 <div className="bg-blue-50 p-4 rounded-xl mb-6">
                   <h3 className="font-semibold mb-3">Course Highlights</h3>
@@ -534,7 +493,6 @@ export default function CourseDetails() {
                 </div>
               )}
 
-              {/* Video Preview */}
               {course.youtube_url && embedUrl && (
                 <div className="bg-gray-50 p-4 rounded-xl mb-6">
                   <h3 className="font-semibold mb-3">Course Preview</h3>
@@ -554,7 +512,6 @@ export default function CourseDetails() {
               )}
             </div>
 
-            {/* Buy button */}
             {!course.paid && (
               <button
                 onClick={handleBuyNow}

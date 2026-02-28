@@ -121,18 +121,18 @@ export default function Navigation() {
               Paid Courses
             </NavLink>
            <NavLink
-  to="/test-series"
-  onClick={(e) => {
-    console.log("Test Series link clicked",user);
-    if (!user) {
-      e.preventDefault(); // ⛔ Stop navigation
-      setEmailOpen(true); // ✅ Open login popup
-    }
-  }}
-  className={navLinkClass}
->
-  Test Series
-</NavLink>
+              to="/test-series"
+              onClick={(e) => {
+                console.log("Test Series link clicked",user);
+                if (!user) {
+                  e.preventDefault(); // ⛔ Stop navigation
+                  setEmailOpen(true); // ✅ Open login popup
+                }
+              }}
+              className={navLinkClass}
+            >
+              Test Series
+            </NavLink>
 
           </div>
 
@@ -215,17 +215,17 @@ export default function Navigation() {
               Paid Courses
             </NavLink>
            <NavLink
-  to="/test-series"
-  onClick={(e) => {
-    if (!user) {
-      e.preventDefault(); // ⛔ Stop navigation
-      setEmailOpen(true); // ✅ Open login popup
-    }
-  }}
-  className={navLinkClass}
->
-  Test Series
-</NavLink>
+              to="/test-series"
+              onClick={(e) => {
+                if (!user) {
+                  e.preventDefault(); // ⛔ Stop navigation
+                  setEmailOpen(true); // ✅ Open login popup
+                }
+              }}
+              className={navLinkClass}
+            >
+              Test Series
+            </NavLink>
 
 
             {/* Mobile User Section */}

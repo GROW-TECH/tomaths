@@ -1,21 +1,43 @@
+import { useEffect, useState } from "react";
+import axios from "axios";
+
+type Banner = {
+  id: string;
+  title: string;
+  image: string;
+  status: string;
+  created_at: string;
+};
+
 export default function Hero() {
+  const [banner, setBanner] = useState<Banner | null>(null);
+
+  useEffect(() => {
+    axios
+      .get<Banner[]>("https://xiadot.com/admin_maths/api/get-banners.php")
+      .then((res) => {
+        if (res.data.length > 0) {
+          setBanner(res.data[0]);
+        }
+      })
+      .catch((err) => console.log(err));
+  }, []);
+
   return (
     <div className="relative bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 py-16 md:py-24">
-      {/* Optional decorative blobs (venumna remove pannalaam) */}
-      <div className="absolute top-0 left-0 w-72 h-72 bg-blue-200 rounded-full blur-xl opacity-30"></div>
-      <div className="absolute top-0 right-0 w-72 h-72 bg-purple-200 rounded-full blur-xl opacity-30"></div>
-
       <div className="relative max-w-7xl mx-auto px-4 flex justify-center">
-        <div className="relative">
-          {/* Tilt background */}
-          <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-purple-400 rounded-3xl transform rotate-6 scale-105 opacity-20"></div>
-
-          {/* IMAGE ONLY */}
-          <img
-            src="https://images.pexels.com/photos/256417/pexels-photo-256417.jpeg?auto=compress&cs=tinysrgb&w=800"
-            alt="Competitive exams"
-            className="relative rounded-3xl shadow-2xl max-h-[500px] object-cover"
-          />
+        <div className="relative w-full max-w-4xl">
+          {banner ? (
+            <img
+              src={banner.image}
+              alt={banner.title}
+              className="rounded-3xl shadow-2xl w-full max-h-[500px] object-cover"
+            />
+          ) : (
+            <div className="h-[400px] flex items-center justify-center bg-gray-200 rounded-3xl">
+              <p className="text-gray-500">No Banner Available</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

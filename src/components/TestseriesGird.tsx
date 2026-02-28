@@ -393,7 +393,9 @@ export default function TestSeriesPage() {
                   </div>
                   <button
                     onClick={() => startTest(test)}
-                    disabled={startedTests.has(test.id) || startingTestId === test.id}
+                    disabled={
+                      startedTests.has(test.id) || startingTestId === test.id
+                    }
                     className={`w-full py-3 px-4 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${
                       startedTests.has(test.id)
                         ? "bg-gray-400 cursor-not-allowed"
