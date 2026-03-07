@@ -16,8 +16,8 @@ type ApiResponse = {
   data?: Exam[];
 };
 
-const API_BASE = "https://xiadot.com/admin_maths/api";
-const UPLOAD_BASE = "https://xiadot.com/admin_maths/uploads/";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "https://tomaths.com/api";
+const UPLOAD_BASE = import.meta.env.VITE_UPLOAD_BASE_URL || "https://tomaths.com/uploads/"; // ✅ base URL for uploads
 const FALLBACK_EXAM = "/default-exam.png"; // ✅ put this inside public/
 
 function toFullImageUrl(url: string | null) {

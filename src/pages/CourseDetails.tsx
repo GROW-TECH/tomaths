@@ -12,8 +12,8 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 
 /* ================= CONFIG ================= */
-const API_BASE = "https://xiadot.com/admin_maths/api";
-const RAZORPAY_KEY = "rzp_live_SKO5Abo716VLoY";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "https://tomaths.com/api";
+const RAZORPAY_KEY = import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_live_SKfxWEp5I2prcN";
 const DEFAULT_IMG = "/logo.png";
 
 /* ================= TYPES ================= */
@@ -52,13 +52,6 @@ declare global {
     Razorpay: any;
   }
 }
-
-const CourseContent = ({ courseId }: { courseId: number }) => (
-  <div className="bg-white p-6 rounded-xl shadow-sm">
-    <h2 className="text-2xl font-bold mb-4">Course Content</h2>
-    <p>Access granted! Course ID: {courseId}</p>
-  </div>
-);
 
 function getYouTubeEmbedUrl(input: string): string | null {
   if (!input) return null;
@@ -101,15 +94,8 @@ export default function CourseDetails() {
   const [embedUrl, setEmbedUrl] = useState<string | null>(null);
   const paymentLock = useRef(false);
 
-  const getUser = () => {
-    try {
-      const stored = localStorage.getItem("user");
-      return stored ? JSON.parse(stored) : {};
-    } catch {
-      return {};
-    }
-  };
-  const user = getUser();
+
+
 
   useEffect(() => {
     const loadCourse = async () => {
@@ -157,6 +143,7 @@ export default function CourseDetails() {
 
         if (!found) throw new Error("Course not found");
         setCourse(found);
+        // console.log("Loaded course:", found);
         setTimeLeft(found.remaining_seconds ?? null);
       } catch (err: unknown) {
         const error = err instanceof Error ? err : new Error(String(err));
@@ -169,10 +156,16 @@ export default function CourseDetails() {
   }, [slug]);
 
   useEffect(() => {
+    console.log("Course details : ", course);
+
     if (!course) return;
     const checkAccess = async () => {
       try {
-        const user_id = localStorage.getItem("user_id");
+const storedUser = localStorage.getItem("user");
+const user = storedUser ? JSON.parse(storedUser) : null;
+const user_id = user?.id;
+
+// console.log("Checking access for user_id:", user_id, "course_id:", course.id);
         if (!user_id) {
           setAccessStatus("not_purchased");
           return;
@@ -181,13 +174,14 @@ export default function CourseDetails() {
           `${API_BASE}/validate_course.php?user_id=${encodeURIComponent(user_id)}&course_id=${course.id}`,
         );
         const data = await res.json();
+        console.log("Access check response:", data);
         setAccessStatus(data.status || "not_purchased");
       } catch {
         setAccessStatus("not_purchased");
       }
     };
     checkAccess();
-  }, [course]);
+  }, [course] );
 
   useEffect(() => {
     if (timeLeft === null || timeLeft <= 0 || !course?.paid) return;
@@ -211,7 +205,10 @@ export default function CourseDetails() {
   const refetchCourse = async () => {
     if (!course) return;
     try {
-      const user_id = localStorage.getItem("user_id") || "";
+      // const user_id = localStorage.getItem("user") || "";
+      const storedUser = localStorage.getItem("user");
+      const user = storedUser ? JSON.parse(storedUser) : null;
+      const user_id = user?.id;
       const url = `${API_BASE}/get_courses.php?user_id=${encodeURIComponent(user_id)}`;
       const res = await fetch(url);
       const json: ApiResponse = await res.json();
@@ -233,8 +230,13 @@ export default function CourseDetails() {
       alert("You already own this course");
       return;
     }
-    if (!user?.id) {
-      alert("Please login first");
+    const storedUser = localStorage.getItem("user");
+    const currentUser = storedUser ? JSON.parse(storedUser) : null;
+
+    if (!currentUser?.id) {
+      console.log("Trigger login popup");
+
+      window.dispatchEvent(new Event("open-login-popup"));
       return;
     }
     if (paymentLock.current) return;
@@ -275,7 +277,7 @@ export default function CourseDetails() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 ...response,
-                user_id: user.id,
+                user_id: currentUser.id,
                 course_id: course.id,
               }),
             });
@@ -360,9 +362,8 @@ export default function CourseDetails() {
     const isSuccess = paymentStatus.type === "success";
     return (
       <div
-        className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-lg flex items-center gap-3 ${
-          isSuccess ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-        }`}
+        className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-lg flex items-center gap-3 ${isSuccess ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+          }`}
       >
         {isSuccess ? <CheckCircle size={20} /> : <XCircle size={20} />}
         <span>
@@ -429,20 +430,7 @@ export default function CourseDetails() {
                   access...
                 </div>
               )}
-              {accessStatus === "expired" && (
-                <div className="bg-red-100 p-6 text-center rounded-xl mb-6 border border-red-300">
-                  <h2 className="text-red-600 font-bold text-xl">
-                    Course Access Expired
-                  </h2>
-                  <p className="mt-2">
-                    You can purchase again to regain access.
-                  </p>
-                </div>
-              )}
-              {accessStatus === "active" && (
-                <CourseContent courseId={course.id} />
-              )}
-
+           
               {!course.paid && (
                 <div className="bg-green-50 rounded-xl p-4 mb-6">
                   <h3 className="font-semibold mb-3">Course Price</h3>
@@ -512,25 +500,48 @@ export default function CourseDetails() {
               )}
             </div>
 
-            {!course.paid && (
-              <button
-                onClick={handleBuyNow}
-                disabled={loadingPay}
-                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {loadingPay ? (
-                  <>
-                    <Loader size={20} className="animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <ShoppingCart size={20} />
-                    Buy Now
-                  </>
-                )}
-              </button>
-            )}
+              {/* NOT PURCHASED */}
+              {accessStatus === "not_purchased" && (
+                <button
+                  onClick={handleBuyNow}
+                  disabled={loadingPay}
+                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {loadingPay ? (
+                    <>
+                      <Loader size={20} className="animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <ShoppingCart size={20} />
+                      Buy Now
+                    </>
+                  )}
+                </button>
+              )}
+
+              {/* ACTIVE COURSE */}
+              {accessStatus === "active" && (
+                <button
+                  onClick={() => navigate(`/test-series?course=${course.id}`)}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2"
+                >
+                  <CheckCircle size={20} />
+                  Go To Course
+                </button>
+              )}
+
+              {/* EXPIRED COURSE */}
+              {accessStatus === "expired" && (
+                <button
+                  onClick={handleBuyNow}
+                  className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2"
+                >
+                  <Clock size={20} />
+                  Renew Course
+                </button>
+              )}
             {course.paid && (
               <div className="text-green-600 font-semibold mt-6 flex items-center gap-2">
                 <CheckCircle size={20} />

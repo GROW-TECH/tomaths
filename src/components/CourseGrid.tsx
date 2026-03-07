@@ -3,37 +3,34 @@ import CourseCard from "./CourseCard";
 import ScrollToTop from "./ScrollToTop";
 
 /* ================= TYPES ================= */
-
 interface ApiCourse {
   id: number;
   course_name: string;
   description: string;
   price: number;
+  actual_price?: number;
   image_url: string | null;
+  exam_title?: string;
   paid?: boolean;
 }
 
 interface ApiResponse {
   success: boolean;
   data: ApiCourse[];
-  count: number;
-  message: string;
 }
 
 interface PaymentCheckResponse {
   success: boolean;
-  courses: Array<{
-    id: number;
-    paid: boolean;
-  }>;
+  courses: Array<{ id: number; paid: boolean }>;
 }
-
-/* ================= COMPONENT ================= */
 
 export default function CourseGrid() {
   const [courses, setCourses] = useState<ApiCourse[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const API_BASE =
+    import.meta.env.VITE_API_BASE_URL || "https://tomaths.com/api";
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -42,82 +39,56 @@ export default function CourseGrid() {
       try {
         const userData = JSON.parse(storedUser);
         loadCoursesWithPaymentStatus(userData.id);
-      } catch (e) {
-        console.error("Failed to parse user", e);
+      } catch {
         loadCourses();
       }
     } else {
       loadCourses();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ Load courses without payment check (for non-logged-in users)
   const loadCourses = async () => {
     try {
       setLoading(true);
-      setError(null);
-
-      const res = await fetch("https://xiadot.com/admin_maths/api/courses.php");
-      if (!res.ok) throw new Error("API not reachable");
-
+      const res = await fetch(`${API_BASE}/courses.php?action=list`);
       const response: ApiResponse = await res.json();
 
-      if (!response.success || !Array.isArray(response.data)) {
-        throw new Error("Invalid API response");
-      }
-
-      setCourses(response.data.map((course) => ({ ...course, paid: false })));
-    } catch (err) {
-      console.error("API ERROR:", err);
+      setCourses(response.data.map((c) => ({ ...c, paid: false })));
+    } catch {
       setError("Failed to load courses");
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ Load courses WITH payment status (for logged-in users)
   const loadCoursesWithPaymentStatus = async (userId: number) => {
     try {
       setLoading(true);
-      setError(null);
 
-      // 1) get all courses
-      const res = await fetch("https://xiadot.com/admin_maths/api/courses.php");
-      if (!res.ok) throw new Error("API not reachable");
-
+      const res = await fetch(`${API_BASE}/courses.php?action=list`);
       const response: ApiResponse = await res.json();
 
-      if (!response.success || !Array.isArray(response.data)) {
-        throw new Error("Invalid API response");
-      }
-
-      // 2) get payment status
-      const payRes = await fetch(
-        "https://xiadot.com/admin_maths/api/get_courses.php",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: userId }),
-        },
-      );
+      const payRes = await fetch(`${API_BASE}/get_courses.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId }),
+      });
 
       const paymentData: PaymentCheckResponse = await payRes.json();
 
-      if (paymentData.success && Array.isArray(paymentData.courses)) {
-        const coursesWithPayment = response.data.map((course) => {
-          const paidCourse = paymentData.courses.find(
-            (pc) => pc.id === course.id,
-          );
-          return { ...course, paid: paidCourse?.paid || false };
-        });
+      const updated = response.data.map((course) => {
+        const paidCourse = paymentData.courses.find(
+          (pc) => pc.id === course.id,
+        );
 
-        setCourses(coursesWithPayment);
-      } else {
-        setCourses(response.data.map((course) => ({ ...course, paid: false })));
-      }
-    } catch (err) {
-      console.error("API ERROR:", err);
+        return {
+          ...course,
+          paid: paidCourse?.paid || false,
+        };
+      });
+
+      setCourses(updated);
+    } catch {
       setError("Failed to load courses");
     } finally {
       setLoading(false);
@@ -129,51 +100,59 @@ export default function CourseGrid() {
 
   if (error) return <p className="text-center py-10 text-red-500">{error}</p>;
 
+  /* ================= GROUP BY exam_title ================= */
+
+  const groupedCourses = courses.reduce((acc: any, course) => {
+    const key = course.exam_title || "Other";
+
+    if (!acc[key]) acc[key] = [];
+
+    acc[key].push(course);
+
+    return acc;
+  }, {});
+
   return (
-    <section className="bg-[#ffffff] py-8 md:py-14">
+    <section className="bg-white py-8 md:py-14">
       <ScrollToTop />
-      {/* ✅ Desktop heading (like your 2nd image)
-      <h1 className="hidden md:block text-center text-5xl font-extrabold text-black mb-10">
-        COMPETITIVE EXAMS
-      </h1>
 
-      {/* ✅ Mobile heading inside panel (optional) */}
-      {/* <div className="md:hidden mx-auto w-full max-w-[420px] px-3 mb-3">
-        <div className="rounded-[28px] bg-slate-600/80 p-5 shadow-xl">
-          <h1 className="text-center text-white text-4xl font-extrabold tracking-widest">
-            COURSES
-          </h1>
-        </div>
-      </div> */}
-
-      {/* ✅ ONE GRID for BOTH: MOBILE=2 columns, DESKTOP=4 columns */}
       <div className="max-w-7xl mx-auto px-4">
-        <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-6 place-items-stretch">
-          {courses.map((course) => {
-            const slug =
-              course.id +
-              "-" +
-              course.course_name.toLowerCase().replace(/\s+/g, "-");
+        {Object.entries(groupedCourses).map(([examTitle, list]: any) => (
+          <div key={examTitle} className="mb-12">
+            {/* Category Title */}
+            <h2 className="text-xl md:text-2xl font-bold mb-6">{examTitle}</h2>
 
-            return (
-              <CourseCard
-                key={course.id}
-                course={{
-                  id: course.id,
-                  title: course.course_name,
-                  description: course.description,
-                  originalPrice: course.price,
-                  discountedPrice: course.price,
-                  image:
-                    course.image_url ?? "https://via.placeholder.com/400x250",
-                  isNew: !course.paid,
-                  slug,
-                  paid: course.paid || false,
-                }}
-              />
-            );
-          })}
-        </div>
+            {/* Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {list.map((course: ApiCourse) => {
+                const slug =
+                  course.id +
+                  "-" +
+                  course.course_name.toLowerCase().replace(/\s+/g, "-");
+
+                return (
+                  <CourseCard
+                    key={course.id}
+                    course={{
+                      id: course.id,
+                      title: course.course_name,
+                      description: course.description,
+                      originalPrice: course.actual_price ?? course.price,
+                      discountedPrice: course.price,
+                      image:
+                        course.image_url ??
+                        "https://via.placeholder.com/400x250",
+                      isNew: !course.paid,
+                      slug,
+                      paid: course.paid || false,
+                      examTitle: course.exam_title,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );

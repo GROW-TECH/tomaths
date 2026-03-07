@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-const API_BASE = "https://xiadot.com/admin_maths/api";
-const UPLOAD_BASE = "https://xiadot.com/admin_maths/uploads/";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "https://tomaths.com/api";
+const UPLOAD_BASE = import.meta.env.VITE_UPLOAD_BASE_URL || "https://tomaths.com/uploads/";
 
 const DEFAULT_IMG = "/images/phonic_placeholder_24.webp";
 
@@ -59,7 +59,7 @@ function normalizeImageUrl(url: unknown): string {
   }
 
   if (clean.startsWith("http://") || clean.startsWith("https://")) {
-    if (clean.includes("xiadot.com/admin_maths/uploads/")) {
+    if (clean.includes("tomaths.com/uploads/")) {
       return clean;
     }
     return clean;

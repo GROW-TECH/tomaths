@@ -14,7 +14,7 @@ export default function Hero() {
 
   useEffect(() => {
     axios
-      .get<Banner[]>("https://xiadot.com/admin_maths/api/get-banners.php")
+      .get<Banner[]>(`${import.meta.env.VITE_API_BASE_URL || "https://tomaths.com/api"}/get-banners.php`)
       .then((res) => {
         if (res.data.length > 0) {
           setBanner(res.data[0]);

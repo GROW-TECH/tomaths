@@ -14,7 +14,7 @@ interface Test {
   attempted?: boolean; // from backend
 }
 
-const API_BASE = "https://xiadot.com/admin_maths/api";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "https://tomaths.com/api";
 const DEV_MODE = false; // Set to false in production
 
 export default function TestSeriesPage() {

@@ -31,7 +31,7 @@ export default function EmailLoginPopup({
   if (!open) return null;
 
   // ✅ LIVE API
-  const API = "https://xiadot.com/admin_maths/api";
+  const API = import.meta.env.VITE_API_BASE_URL || "https://tomaths.com/api";
 
   const resetAll = () => {
     setName("");

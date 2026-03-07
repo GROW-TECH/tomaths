@@ -34,8 +34,8 @@ interface Course {
 }
 
 /* ================= CONFIG ================= */
-const API_BASE = "https://xiadot.com/admin_maths/api";
-const RAZORPAY_KEY = "rzp_live_Remrhpj0npbETD";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "https://tomaths.com/api";
+const RAZORPAY_KEY = import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_live_SKfxWEp5I2prcN";
 
 /* ================= COURSE CARD COMPONENT ================= */
 function CourseCard({

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-const API_BASE = "https://xiadot.com/admin_maths/api";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "https://tomaths.com/api";
 const DEFAULT_IMG = "/logo.png";
 
 type SubCategory = {
@@ -17,7 +17,7 @@ function normalizeImageUrl(url: string | null) {
   if (clean.startsWith("http")) return clean;
 
   const trimmed = clean.replace(/^\/+/, "").replace(/^uploads\//, "");
-  return `https://xiadot.com/admin_maths/uploads/subcategories/${trimmed}`;
+  return `${import.meta.env.VITE_UPLOAD_BASE_URL || "https://tomaths.com/uploads/"}subcategories/${trimmed}`;
 }
 
 export default function CoursesBySubCategoryPage() {
@@ -38,7 +38,7 @@ export default function CoursesBySubCategoryPage() {
         setLoading(true);
         setError(null);
 
-        const res = await fetch(
+        const res = await fetch( 
           `${API_BASE}/get_subcategories_by_exam.php`,
           {
             method: "POST",

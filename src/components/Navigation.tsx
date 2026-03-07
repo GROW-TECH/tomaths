@@ -99,14 +99,25 @@ export default function Navigation() {
     return "U";
   };
 
-  
+useEffect(() => {
+  const openLogin = () => {
+    console.log("Opening login popup");
+    setEmailOpen(true);
+  };
+
+  window.addEventListener("open-login-popup", openLogin);
+
+  return () => {
+    window.removeEventListener("open-login-popup", openLogin);
+  };
+}, []);
   return (
     <>
       <nav className="bg-white border-b sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           {/* LOGO */}
           <div className="flex items-center gap-2">
-            <img src="logo.png" className="h-12 w-12" alt="TO Maths Logo" />
+            <img src="/logo.png" className="h-12 w-12" alt="TO Maths Logo" />
             <span className="font-semibold text-lg text-blue-600">
               Thani Oruvan Maths{" "}
             </span>

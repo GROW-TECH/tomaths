@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-const API_BASE = "https://xiadot.com/admin_maths/api";
-const SITE_BASE = "https://xiadot.com";
+const API_BASE =  import.meta.env.VITE_API_BASE_URL || "https://tomaths.com/api";
+const SITE_BASE = "https://tomaths.com";
 const DEFAULT_IMG = "/logo.png";
 
 type RawItem = Record<string, any>;
@@ -37,14 +37,14 @@ function normalizeImageUrl(val: any): string | null {
 
   s = s.replace(/^\.\.\//, "");
 
-  if (s.startsWith("/uploads/")) return `${SITE_BASE}/admin_maths${s}`;
-  if (s.startsWith("uploads/")) return `${SITE_BASE}/admin_maths/${s}`;
+  if (s.startsWith("/uploads/")) return `${SITE_BASE}/${s}`;
+  if (s.startsWith("uploads/")) return `${SITE_BASE}/${s}`;
   if (s.startsWith("admin_maths/")) return `${SITE_BASE}/${s}`;
 
   // Debug log to see what URLs are being generated
-  console.log("🔍 Normalizing image:", val, "→", `${SITE_BASE}/admin_maths/uploads/${s}`);
+  console.log("🔍 Normalizing image:", val, "→", `${SITE_BASE}/uploads/${s}`);
   
-  return `${SITE_BASE}/admin_maths/uploads/${s}`;
+  return `${SITE_BASE}/uploads/${s}`;
 }
 
 function safeName(item: RawItem): string {
