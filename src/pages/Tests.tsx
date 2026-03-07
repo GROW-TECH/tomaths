@@ -2,11 +2,16 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Edit2, Trash2, ExternalLink } from "lucide-react";
 
 const API_BASE_URL = import.meta.env.VITE_API_LINK;
-// Optional: override subcategory endpoint via env (if your API has a consistent name)
 const SUBCATEGORY_ENDPOINT =
   import.meta.env.VITE_SUBCATEGORY_ENDPOINT || "get_subCategory.php";
 
 // ================= TYPES =================
+interface Course {
+  id: number;
+  course_name: string;
+  description?: string;
+}
+
 interface Category {
   id: number;
   category_name: string;
@@ -23,8 +28,10 @@ interface Test {
   test_name: string;
   test_url: string;
   preview_url: string;
+  course_id: number | null;
   category_id: number | null;
   subcategory_id: number | null;
+  course_name?: string | null;
   category_name?: string | null;
   subcategory_name?: string | null;
   created_at: string;
@@ -34,6 +41,7 @@ interface TestFormData {
   test_name: string;
   test_url: string;
   preview_url: string;
+  course_id: string;
   category_id: string;
   subcategory_id: string;
 }
@@ -41,10 +49,12 @@ interface TestFormData {
 // ================= COMPONENT =================
 function Tests() {
   const [tests, setTests] = useState<Test[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
 
   const [loadingTests, setLoadingTests] = useState(false);
+  const [loadingCourses, setLoadingCourses] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingSubcategories, setLoadingSubcategories] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,9 +67,34 @@ function Tests() {
     test_name: "",
     test_url: "",
     preview_url: "",
+    course_id: "",
     category_id: "",
     subcategory_id: "",
   });
+
+  // ================= HELPER =================
+  const extractArray = (data: any, extraKeys: string[] = []): any[] => {
+    if (Array.isArray(data)) return data;
+    if (data && typeof data === "object") {
+      const keys = [
+        "data",
+        "courses",
+        "categories",
+        "subcategories",
+        "items",
+        "result",
+        "results",
+        ...extraKeys,
+      ];
+      for (const key of keys) {
+        if (Array.isArray(data[key])) return data[key];
+      }
+      const values = Object.values(data);
+      if (values.length > 0 && typeof values[0] === "object")
+        return values as any[];
+    }
+    return [];
+  };
 
   // ================= API CALLS =================
   const loadTests = useCallback(async () => {
@@ -71,27 +106,25 @@ function Tests() {
       if (!res.ok) throw new Error(`HTTP error ${res.status}`);
 
       const text = await res.text();
-      console.log("Raw tests response:", text);
+      console.log("=== RAW TESTS RESPONSE ===", text);
 
       let data;
       try {
         data = JSON.parse(text);
       } catch {
-        throw new Error("Server returned invalid JSON");
+        throw new Error("Server returned invalid JSON for tests");
       }
 
-      let testsArray = [];
-      if (data.data && Array.isArray(data.data)) testsArray = data.data;
-      else if (Array.isArray(data)) testsArray = data;
-      else if (data && typeof data === "object") testsArray = [data];
-
+      const testsArray = extractArray(data);
       const mapped = testsArray.map((item: any) => ({
         id: item.id,
         test_name: item.test_name,
         test_url: item.test_url,
         preview_url: item.preview_url,
+        course_id: item.course_id ?? null,
         category_id: item.category_id ?? null,
         subcategory_id: item.subcategory_id ?? null,
+        course_name: item.course_name ?? null,
         category_name: item.category_name ?? null,
         subcategory_name: item.subcategory_name ?? null,
         created_at: item.created_at,
@@ -105,31 +138,81 @@ function Tests() {
     }
   }, []);
 
+  const loadCourses = useCallback(async () => {
+    setLoadingCourses(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/get_courses.php?action=list`);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+
+      const text = await res.text();
+      console.log("=== RAW COURSES RESPONSE ===", text);
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error("Server returned invalid JSON for courses");
+      }
+
+      console.log("=== PARSED COURSES DATA ===", data);
+      console.log("=== COURSES DATA KEYS ===", Object.keys(data));
+
+      const list = extractArray(data, ["courses"]);
+      console.log("=== EXTRACTED COURSES LIST ===", list);
+
+      const mapped = list.map((item: any) => ({
+        id: Number(item.id),
+        course_name: item.course_name || item.name || item.title || "Unnamed",
+        description: item.description,
+      }));
+
+      console.log("=== MAPPED COURSES ===", mapped);
+      setCourses(mapped);
+    } catch (err) {
+      console.error("Failed to load courses:", err);
+      setError("Could not load courses: " + String(err));
+    } finally {
+      setLoadingCourses(false);
+    }
+  }, []);
+
   const loadCategories = useCallback(async () => {
     setLoadingCategories(true);
     try {
       const res = await fetch(`${API_BASE_URL}/get_Category.php?action=list`);
       if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-      const data = await res.json();
-      console.log("Categories loaded:", data);
 
-      const mapped = (data.data || []).map((item: any) => ({
+      const text = await res.text();
+      console.log("=== RAW CATEGORIES RESPONSE ===", text);
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error("Server returned invalid JSON for categories");
+      }
+
+      console.log("=== PARSED CATEGORIES DATA ===", data);
+
+      const list = extractArray(data, ["categories"]);
+      console.log("=== EXTRACTED CATEGORIES LIST ===", list);
+
+      const mapped = list.map((item: any) => ({
         id: Number(item.id),
-        category_name: item.category_name,
+        category_name:
+          item.category_name || item.name || item.title || "Unnamed",
       }));
+
+      console.log("=== MAPPED CATEGORIES ===", mapped);
       setCategories(mapped);
     } catch (err) {
       console.error("Failed to load categories:", err);
-      setError("Could not load categories.");
+      setError("Could not load categories: " + String(err));
     } finally {
       setLoadingCategories(false);
     }
   }, []);
 
-  /**
-   * Enhanced subcategory loader with detailed logging and multiple fallback endpoints.
-   * Set VITE_SUBCATEGORY_ENDPOINT in your .env file if your endpoint name differs.
-   */
   const loadSubcategories = useCallback(async (categoryId: string) => {
     if (!categoryId) {
       setSubcategories([]);
@@ -139,62 +222,37 @@ function Tests() {
     setLoadingSubcategories(true);
     setError(null);
 
-    // Build a list of possible endpoint URLs
     const baseUrl = API_BASE_URL;
     const possibleEndpoints = [
-      // Use configured endpoint if provided
       `${baseUrl}/${SUBCATEGORY_ENDPOINT}?action=list&category_id=${categoryId}`,
-      // Common variations
       `${baseUrl}/get_subcategory.php?action=list&category_id=${categoryId}`,
       `${baseUrl}/get_subCategory.php?action=list&category_id=${categoryId}`,
       `${baseUrl}/subcategories.php?action=list&category_id=${categoryId}`,
       `${baseUrl}/subcategory.php?action=list&category_id=${categoryId}`,
-      // Sometimes the parameter name is 'cat_id'
       `${baseUrl}/get_subCategory.php?action=list&cat_id=${categoryId}`,
       `${baseUrl}/subcategories.php?cat_id=${categoryId}`,
     ];
 
-    // Remove duplicates (if any)
     const uniqueEndpoints = [...new Set(possibleEndpoints)];
-
     let lastError = "";
 
     for (const endpoint of uniqueEndpoints) {
       try {
         console.log("Trying subcategory endpoint:", endpoint);
         const res = await fetch(endpoint);
-
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status} ${res.statusText}`);
-        }
+        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
 
         const text = await res.text();
-        console.log(`Raw response from ${endpoint}:`, text.substring(0, 300)); // log first 300 chars
+        console.log(`=== RAW SUBCATEGORY RESPONSE ===`, text.substring(0, 300));
 
-        // Attempt to parse JSON
         let data;
         try {
           data = JSON.parse(text);
-        } catch (parseError) {
-          console.warn("Response is not valid JSON:", text.substring(0, 100));
-          throw new Error("Response is not JSON (likely HTML error page)");
+        } catch {
+          throw new Error("Response is not JSON");
         }
 
-        // Extract subcategory array – handle different API response structures
-        let items = [];
-        if (data.data && Array.isArray(data.data)) {
-          items = data.data;
-        } else if (Array.isArray(data)) {
-          items = data;
-        } else if (data && typeof data === "object") {
-          // Maybe it's a single object or has a different wrapper
-          items = data.subcategories || data.items || [];
-        }
-
-        if (items.length === 0) {
-          console.warn("No subcategory items found in response:", data);
-        }
-
+        const items = extractArray(data, ["subcategories"]);
         const mapped = items.map((item: any) => ({
           id: item.id,
           subcategory_name: item.subcategory_name || item.name || "Unnamed",
@@ -203,27 +261,24 @@ function Tests() {
 
         setSubcategories(mapped);
         setLoadingSubcategories(false);
-        return; // success – exit function
+        return;
       } catch (err) {
         console.warn(`Endpoint failed: ${endpoint}`, err);
         lastError = err instanceof Error ? err.message : "Unknown error";
-        // continue to next endpoint
       }
     }
 
-    // All endpoints failed
-    console.error("All subcategory endpoints failed. Last error:", lastError);
+    console.error("All subcategory endpoints failed:", lastError);
     setSubcategories([]);
-    setError(
-      `Could not load subcategories. Please check the console and your API. Last error: ${lastError}`,
-    );
+    setError(`Could not load subcategories. Last error: ${lastError}`);
     setLoadingSubcategories(false);
   }, []);
 
   useEffect(() => {
     loadTests();
+    loadCourses();
     loadCategories();
-  }, [loadTests, loadCategories]);
+  }, [loadTests, loadCourses, loadCategories]);
 
   // ================= FORM HANDLERS =================
   const handleChange = (
@@ -240,10 +295,7 @@ function Tests() {
         subcategory_id: "",
       }));
     } else {
-      setFormData((prev) => ({
-        ...prev,
-        [name]: value,
-      }));
+      setFormData((prev) => ({ ...prev, [name]: value }));
     }
   };
 
@@ -252,6 +304,7 @@ function Tests() {
       test_name: "",
       test_url: "",
       preview_url: "",
+      course_id: "",
       category_id: "",
       subcategory_id: "",
     });
@@ -261,29 +314,15 @@ function Tests() {
   };
 
   const handleEdit = async (test: Test) => {
-    console.log("Editing test:", test);
-
-    if (!test.category_id) {
-      const confirmEdit = confirm(
-        "This test has no category. You can add a category now. Continue?",
-      );
-      if (!confirmEdit) return;
-    }
-
-    if (categories.length === 0) {
-      console.log("Loading categories...");
-      await loadCategories();
-    }
-
-    if (test.category_id) {
-      console.log("Loading subcategories for category:", test.category_id);
-      await loadSubcategories(test.category_id.toString());
-    }
+    if (courses.length === 0) await loadCourses();
+    if (categories.length === 0) await loadCategories();
+    if (test.category_id) await loadSubcategories(test.category_id.toString());
 
     setFormData({
       test_name: test.test_name,
       test_url: test.test_url,
       preview_url: test.preview_url,
+      course_id: test.course_id?.toString() || "",
       category_id: test.category_id?.toString() || "",
       subcategory_id: test.subcategory_id?.toString() || "",
     });
@@ -294,9 +333,6 @@ function Tests() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    console.log("Current form data:", formData);
-
-    // Validate each field individually
     if (!formData.test_name?.trim()) {
       alert("Test name is required");
       return;
@@ -309,6 +345,10 @@ function Tests() {
       alert("Preview URL is required");
       return;
     }
+    if (!formData.course_id) {
+      alert("Please select a course");
+      return;
+    }
     if (!formData.category_id) {
       alert("Please select a category");
       return;
@@ -318,7 +358,6 @@ function Tests() {
       return;
     }
 
-    // URL validation
     const urlPattern = /^https?:\/\/.+/;
     if (!urlPattern.test(formData.test_url)) {
       alert("Test URL must start with http:// or https://");
@@ -329,23 +368,14 @@ function Tests() {
       return;
     }
 
-    // Create FormData and append each field
     const form = new FormData();
     form.append("test_name", formData.test_name.trim());
     form.append("test_url", formData.test_url.trim());
     form.append("preview_url", formData.preview_url.trim());
+    form.append("course_id", formData.course_id);
     form.append("category_id", formData.category_id);
     form.append("subcategory_id", formData.subcategory_id);
-
-    if (editingId) {
-      form.append("id", editingId.toString());
-    }
-
-    // Log FormData contents for debugging
-    console.log("FormData entries:");
-    for (let pair of form.entries()) {
-      console.log(pair[0] + ": " + pair[1]);
-    }
+    if (editingId) form.append("id", editingId.toString());
 
     const url = editingId ? "update_test.php" : "add_test.php";
 
@@ -354,7 +384,6 @@ function Tests() {
         method: "POST",
         body: form,
       });
-
       const responseText = await res.text();
       console.log("Server response:", responseText);
 
@@ -365,9 +394,8 @@ function Tests() {
         throw new Error("Server returned invalid JSON");
       }
 
-      if (!result.success) {
+      if (!result.success)
         throw new Error(result.message || "Unknown server error");
-      }
 
       alert("Test saved successfully!");
       resetForm();
@@ -404,6 +432,7 @@ function Tests() {
     return tests.filter(
       (t) =>
         t.test_name.toLowerCase().includes(term) ||
+        t.course_name?.toLowerCase().includes(term) ||
         t.category_name?.toLowerCase().includes(term) ||
         t.subcategory_name?.toLowerCase().includes(term),
     );
@@ -443,13 +472,36 @@ function Tests() {
             />
 
             <select
+              name="course_id"
+              value={formData.course_id}
+              onChange={handleChange}
+              className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
+              required
+            >
+              <option value="">
+                {loadingCourses
+                  ? "Loading Exams..."
+                  : `Select Exam (${courses.length} found)`}
+              </option>
+              {courses.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.course_name}
+                </option>
+              ))}
+            </select>
+
+            <select
               name="category_id"
               value={formData.category_id}
               onChange={handleChange}
               className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
               required
             >
-              <option value="">Select Category</option>
+              <option value="">
+                {loadingCategories
+                  ? "Loading Categories..."
+                  : `Select Category (${categories.length} found)`}
+              </option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.category_name}
@@ -463,10 +515,14 @@ function Tests() {
               onChange={handleChange}
               className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
               required
-              disabled={loadingSubcategories}
+              disabled={loadingSubcategories || !formData.category_id}
             >
               <option value="">
-                {loadingSubcategories ? "Loading..." : "Select Subcategory"}
+                {loadingSubcategories
+                  ? "Loading..."
+                  : !formData.category_id
+                    ? "Select Category first"
+                    : `Select Subcategory (${subcategories.length} found)`}
               </option>
               {subcategories.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -505,7 +561,7 @@ function Tests() {
 
       <input
         type="text"
-        placeholder="Search tests, categories, subcategories..."
+        placeholder="Search tests, courses, categories, subcategories..."
         className="border p-2 mb-4 w-full rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
@@ -516,6 +572,7 @@ function Tests() {
           <thead className="bg-gray-100">
             <tr>
               <th className="p-3 text-left">Test</th>
+              <th className="p-3 text-left">Exam</th>
               <th className="p-3 text-left">Category</th>
               <th className="p-3 text-left">Subcategory</th>
               <th className="p-3 text-left">Links</th>
@@ -526,13 +583,13 @@ function Tests() {
           <tbody>
             {loadingTests ? (
               <tr>
-                <td colSpan={5} className="p-6 text-center text-gray-500">
+                <td colSpan={6} className="p-6 text-center text-gray-500">
                   Loading tests...
                 </td>
               </tr>
             ) : filteredTests.length === 0 ? (
               <tr>
-                <td colSpan={5} className="p-6 text-center text-gray-500">
+                <td colSpan={6} className="p-6 text-center text-gray-500">
                   No tests found.
                 </td>
               </tr>
@@ -540,6 +597,7 @@ function Tests() {
               filteredTests.map((test) => (
                 <tr key={test.id} className="border-t hover:bg-gray-50">
                   <td className="p-3">{test.test_name}</td>
+                  <td className="p-3">{test.course_name || "—"}</td>
                   <td className="p-3">{test.category_name || "—"}</td>
                   <td className="p-3">{test.subcategory_name || "—"}</td>
                   <td className="p-3">
