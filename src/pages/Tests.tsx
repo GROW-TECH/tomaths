@@ -5,13 +5,18 @@ const API_BASE_URL = import.meta.env.VITE_API_LINK;
 const SUBCATEGORY_ENDPOINT =
   import.meta.env.VITE_SUBCATEGORY_ENDPOINT || "get_subCategory.php";
 
-// ================= TYPES =================
-interface Course {
-  id: number;
-  course_name: string;
-  description?: string;
-}
+// ================= CONSTANTS =================
+const API_ENDPOINTS = {
+  TESTS: "tests.php",
+  CATEGORIES: "get_Category.php",
+  ADD_TEST: "add_test.php",
+  UPDATE_TEST: "update_test.php",
+  DELETE_TEST: "delete_test.php",
+} as const;
 
+const URL_PATTERN = /^https?:\/\/.+/;
+
+// ================= TYPES =================
 interface Category {
   id: number;
   category_name: string;
@@ -28,10 +33,8 @@ interface Test {
   test_name: string;
   test_url: string;
   preview_url: string;
-  course_id: number | null;
   category_id: number | null;
   subcategory_id: number | null;
-  course_name?: string | null;
   category_name?: string | null;
   subcategory_name?: string | null;
   created_at: string;
@@ -41,67 +44,79 @@ interface TestFormData {
   test_name: string;
   test_url: string;
   preview_url: string;
-  course_id: string;
   category_id: string;
   subcategory_id: string;
 }
 
+interface FormErrors {
+  test_name?: string;
+  test_url?: string;
+  preview_url?: string;
+  category_id?: string;
+  subcategory_id?: string;
+}
+
+// ================= HELPER FUNCTIONS =================
+const extractArray = (data: any, extraKeys: string[] = []): any[] => {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === "object") {
+    const keys = [
+      "data",
+      "courses",
+      "categories",
+      "subcategories",
+      "items",
+      "result",
+      "results",
+      ...extraKeys,
+    ];
+    for (const key of keys) {
+      if (Array.isArray(data[key])) return data[key];
+    }
+    const values = Object.values(data);
+    if (values.length > 0 && typeof values[0] === "object")
+      return values as any[];
+  }
+  return [];
+};
+
+const handleApiError = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return "An unexpected error occurred";
+};
+
 // ================= COMPONENT =================
 function Tests() {
   const [tests, setTests] = useState<Test[]>([]);
-  const [courses, setCourses] = useState<Course[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
 
   const [loadingTests, setLoadingTests] = useState(false);
-  const [loadingCourses, setLoadingCourses] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingSubcategories, setLoadingSubcategories] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
 
   const [formData, setFormData] = useState<TestFormData>({
     test_name: "",
     test_url: "",
     preview_url: "",
-    course_id: "",
     category_id: "",
     subcategory_id: "",
   });
-
-  // ================= HELPER =================
-  const extractArray = (data: any, extraKeys: string[] = []): any[] => {
-    if (Array.isArray(data)) return data;
-    if (data && typeof data === "object") {
-      const keys = [
-        "data",
-        "courses",
-        "categories",
-        "subcategories",
-        "items",
-        "result",
-        "results",
-        ...extraKeys,
-      ];
-      for (const key of keys) {
-        if (Array.isArray(data[key])) return data[key];
-      }
-      const values = Object.values(data);
-      if (values.length > 0 && typeof values[0] === "object")
-        return values as any[];
-    }
-    return [];
-  };
 
   // ================= API CALLS =================
   const loadTests = useCallback(async () => {
     setLoadingTests(true);
     setError(null);
     try {
-      const url = `${API_BASE_URL}/tests.php?t=${Date.now()}`;
+      const url = `${API_BASE_URL}/${API_ENDPOINTS.TESTS}?t=${Date.now()}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP error ${res.status}`);
 
@@ -121,10 +136,8 @@ function Tests() {
         test_name: item.test_name,
         test_url: item.test_url,
         preview_url: item.preview_url,
-        course_id: item.course_id ?? null,
         category_id: item.category_id ?? null,
         subcategory_id: item.subcategory_id ?? null,
-        course_name: item.course_name ?? null,
         category_name: item.category_name ?? null,
         subcategory_name: item.subcategory_name ?? null,
         created_at: item.created_at,
@@ -132,54 +145,19 @@ function Tests() {
       setTests(mapped);
     } catch (err) {
       console.error("Failed to load tests:", err);
-      setError(err instanceof Error ? err.message : "Could not load tests.");
+      setError(handleApiError(err));
     } finally {
       setLoadingTests(false);
     }
   }, []);
 
-  const loadCourses = useCallback(async () => {
-    setLoadingCourses(true);
-    try {
-      const res = await fetch(`${API_BASE_URL}/get_courses.php?action=list`);
-      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-
-      const text = await res.text();
-      console.log("=== RAW COURSES RESPONSE ===", text);
-
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error("Server returned invalid JSON for courses");
-      }
-
-      console.log("=== PARSED COURSES DATA ===", data);
-      console.log("=== COURSES DATA KEYS ===", Object.keys(data));
-
-      const list = extractArray(data, ["courses"]);
-      console.log("=== EXTRACTED COURSES LIST ===", list);
-
-      const mapped = list.map((item: any) => ({
-        id: Number(item.id),
-        course_name: item.course_name || item.name || item.title || "Unnamed",
-        description: item.description,
-      }));
-
-      console.log("=== MAPPED COURSES ===", mapped);
-      setCourses(mapped);
-    } catch (err) {
-      console.error("Failed to load courses:", err);
-      setError("Could not load courses: " + String(err));
-    } finally {
-      setLoadingCourses(false);
-    }
-  }, []);
-
   const loadCategories = useCallback(async () => {
     setLoadingCategories(true);
+    setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/get_Category.php?action=list`);
+      const res = await fetch(
+        `${API_BASE_URL}/${API_ENDPOINTS.CATEGORIES}?action=list`,
+      );
       if (!res.ok) throw new Error(`HTTP error ${res.status}`);
 
       const text = await res.text();
@@ -192,22 +170,17 @@ function Tests() {
         throw new Error("Server returned invalid JSON for categories");
       }
 
-      console.log("=== PARSED CATEGORIES DATA ===", data);
-
       const list = extractArray(data, ["categories"]);
-      console.log("=== EXTRACTED CATEGORIES LIST ===", list);
-
       const mapped = list.map((item: any) => ({
         id: Number(item.id),
         category_name:
           item.category_name || item.name || item.title || "Unnamed",
       }));
 
-      console.log("=== MAPPED CATEGORIES ===", mapped);
       setCategories(mapped);
     } catch (err) {
       console.error("Failed to load categories:", err);
-      setError("Could not load categories: " + String(err));
+      setError(handleApiError(err));
     } finally {
       setLoadingCategories(false);
     }
@@ -243,7 +216,10 @@ function Tests() {
         if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
 
         const text = await res.text();
-        console.log(`=== RAW SUBCATEGORY RESPONSE ===`, text.substring(0, 300));
+        console.log(
+          `=== RAW SUBCATEGORY RESPONSE ===`,
+          text.substring(0, 300),
+        );
 
         let data;
         try {
@@ -276,9 +252,40 @@ function Tests() {
 
   useEffect(() => {
     loadTests();
-    loadCourses();
     loadCategories();
-  }, [loadTests, loadCourses, loadCategories]);
+  }, [loadTests, loadCategories]);
+
+  // ================= VALIDATION =================
+  const validateForm = (): boolean => {
+    const errors: FormErrors = {};
+
+    if (!formData.test_name?.trim()) {
+      errors.test_name = "Test name is required";
+    }
+
+    if (!formData.test_url?.trim()) {
+      errors.test_url = "Test URL is required";
+    } else if (!URL_PATTERN.test(formData.test_url)) {
+      errors.test_url = "Test URL must start with http:// or https://";
+    }
+
+    if (!formData.preview_url?.trim()) {
+      errors.preview_url = "Preview URL is required";
+    } else if (!URL_PATTERN.test(formData.preview_url)) {
+      errors.preview_url = "Preview URL must start with http:// or https://";
+    }
+
+    if (!formData.category_id) {
+      errors.category_id = "Please select a category";
+    }
+
+    if (!formData.subcategory_id) {
+      errors.subcategory_id = "Please select a subcategory";
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   // ================= FORM HANDLERS =================
   const handleChange = (
@@ -286,6 +293,11 @@ function Tests() {
   ) => {
     const { name, value } = e.target;
     console.log(`Field changed: ${name} = ${value}`);
+
+    // Clear error for this field when user starts typing
+    if (formErrors[name as keyof FormErrors]) {
+      setFormErrors((prev) => ({ ...prev, [name]: undefined }));
+    }
 
     if (name === "category_id") {
       loadSubcategories(value);
@@ -304,17 +316,17 @@ function Tests() {
       test_name: "",
       test_url: "",
       preview_url: "",
-      course_id: "",
       category_id: "",
       subcategory_id: "",
     });
+    setFormErrors({});
     setSubcategories([]);
     setEditingId(null);
     setShowForm(false);
   };
 
   const handleEdit = async (test: Test) => {
-    if (courses.length === 0) await loadCourses();
+    setError(null);
     if (categories.length === 0) await loadCategories();
     if (test.category_id) await loadSubcategories(test.category_id.toString());
 
@@ -322,7 +334,6 @@ function Tests() {
       test_name: test.test_name,
       test_url: test.test_url,
       preview_url: test.preview_url,
-      course_id: test.course_id?.toString() || "",
       category_id: test.category_id?.toString() || "",
       subcategory_id: test.subcategory_id?.toString() || "",
     });
@@ -333,51 +344,22 @@ function Tests() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.test_name?.trim()) {
-      alert("Test name is required");
-      return;
-    }
-    if (!formData.test_url?.trim()) {
-      alert("Test URL is required");
-      return;
-    }
-    if (!formData.preview_url?.trim()) {
-      alert("Preview URL is required");
-      return;
-    }
-    if (!formData.course_id) {
-      alert("Please select a course");
-      return;
-    }
-    if (!formData.category_id) {
-      alert("Please select a category");
-      return;
-    }
-    if (!formData.subcategory_id) {
-      alert("Please select a subcategory");
+    if (!validateForm()) {
       return;
     }
 
-    const urlPattern = /^https?:\/\/.+/;
-    if (!urlPattern.test(formData.test_url)) {
-      alert("Test URL must start with http:// or https://");
-      return;
-    }
-    if (!urlPattern.test(formData.preview_url)) {
-      alert("Preview URL must start with http:// or https://");
-      return;
-    }
+    setIsSubmitting(true);
+    setError(null);
 
     const form = new FormData();
     form.append("test_name", formData.test_name.trim());
     form.append("test_url", formData.test_url.trim());
     form.append("preview_url", formData.preview_url.trim());
-    form.append("course_id", formData.course_id);
     form.append("category_id", formData.category_id);
     form.append("subcategory_id", formData.subcategory_id);
     if (editingId) form.append("id", editingId.toString());
 
-    const url = editingId ? "update_test.php" : "add_test.php";
+    const url = editingId ? API_ENDPOINTS.UPDATE_TEST : API_ENDPOINTS.ADD_TEST;
 
     try {
       const res = await fetch(`${API_BASE_URL}/${url}`, {
@@ -394,26 +376,32 @@ function Tests() {
         throw new Error("Server returned invalid JSON");
       }
 
-      if (!result.success)
+      if (!result.success) {
         throw new Error(result.message || "Unknown server error");
+      }
 
       alert("Test saved successfully!");
       resetForm();
       loadTests();
     } catch (err) {
       console.error("Failed to save test:", err);
-      alert(err instanceof Error ? err.message : "Could not save test.");
+      setError(handleApiError(err));
+      alert(handleApiError(err));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm("Are you sure you want to delete this test?")) return;
 
+    setError(null);
+
     const form = new FormData();
     form.append("id", id.toString());
 
     try {
-      const res = await fetch(`${API_BASE_URL}/delete_test.php`, {
+      const res = await fetch(`${API_BASE_URL}/${API_ENDPOINTS.DELETE_TEST}`, {
         method: "POST",
         body: form,
       });
@@ -422,6 +410,7 @@ function Tests() {
       loadTests();
     } catch (err) {
       console.error("Failed to delete test:", err);
+      setError(handleApiError(err));
       alert("Could not delete test. Please try again.");
     }
   };
@@ -431,26 +420,35 @@ function Tests() {
     const term = searchTerm.toLowerCase();
     return tests.filter(
       (t) =>
+        !term ||
         t.test_name.toLowerCase().includes(term) ||
-        t.course_name?.toLowerCase().includes(term) ||
         t.category_name?.toLowerCase().includes(term) ||
         t.subcategory_name?.toLowerCase().includes(term),
     );
   }, [tests, searchTerm]);
 
+  const clearFilters = () => {
+    setSearchTerm("");
+  };
+
   // ================= RENDER =================
   return (
-    <div className="p-6">
+    <div className="p-6" role="region" aria-label="Tests management">
       <h1 className="text-3xl font-bold mb-6">Tests Management</h1>
 
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+        <div
+          className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4"
+          role="alert"
+        >
           {error}
         </div>
       )}
 
       <button
         onClick={() => setShowForm(!showForm)}
+        aria-expanded={showForm}
+        aria-controls="test-form"
         className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded mb-6 transition"
       >
         {showForm ? "Cancel" : "Add Test"}
@@ -458,121 +456,188 @@ function Tests() {
 
       {showForm && (
         <form
+          id="test-form"
           className="bg-white p-6 shadow rounded mb-6 border"
           onSubmit={handleSubmit}
+          role="form"
+          aria-label={editingId ? "Edit test" : "Add new test"}
         >
           <div className="grid md:grid-cols-2 gap-4">
-            <input
-              name="test_name"
-              placeholder="Test Name"
-              value={formData.test_name}
-              onChange={handleChange}
-              className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
-              required
-            />
+            <div>
+              <input
+                name="test_name"
+                placeholder="Test Name"
+                value={formData.test_name}
+                onChange={handleChange}
+                className={`border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-300 w-full ${
+                  formErrors.test_name ? "border-red-500" : ""
+                }`}
+                aria-invalid={!!formErrors.test_name}
+                aria-describedby={
+                  formErrors.test_name ? "test-name-error" : undefined
+                }
+              />
+              {formErrors.test_name && (
+                <p id="test-name-error" className="text-red-500 text-sm mt-1">
+                  {formErrors.test_name}
+                </p>
+              )}
+            </div>
 
-            <select
-              name="course_id"
-              value={formData.course_id}
-              onChange={handleChange}
-              className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
-              required
-            >
-              <option value="">
-                {loadingCourses
-                  ? "Loading Exams..."
-                  : `Select Exam (${courses.length} found)`}
-              </option>
-              {courses.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.course_name}
+            <div>
+              <select
+                name="category_id"
+                value={formData.category_id}
+                onChange={handleChange}
+                className={`border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-300 w-full ${
+                  formErrors.category_id ? "border-red-500" : ""
+                }`}
+                aria-invalid={!!formErrors.category_id}
+                aria-describedby={
+                  formErrors.category_id ? "category-error" : undefined
+                }
+              >
+                <option value="">
+                  {loadingCategories
+                    ? "Loading Categories..."
+                    : `Select Category (${categories.length} found)`}
                 </option>
-              ))}
-            </select>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.category_name}
+                  </option>
+                ))}
+              </select>
+              {formErrors.category_id && (
+                <p id="category-error" className="text-red-500 text-sm mt-1">
+                  {formErrors.category_id}
+                </p>
+              )}
+            </div>
 
-            <select
-              name="category_id"
-              value={formData.category_id}
-              onChange={handleChange}
-              className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
-              required
-            >
-              <option value="">
-                {loadingCategories
-                  ? "Loading Categories..."
-                  : `Select Category (${categories.length} found)`}
-              </option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.category_name}
+            <div>
+              <select
+                name="subcategory_id"
+                value={formData.subcategory_id}
+                onChange={handleChange}
+                className={`border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-300 w-full ${
+                  formErrors.subcategory_id ? "border-red-500" : ""
+                }`}
+                required
+                disabled={loadingSubcategories || !formData.category_id}
+                aria-invalid={!!formErrors.subcategory_id}
+                aria-describedby={
+                  formErrors.subcategory_id ? "subcategory-error" : undefined
+                }
+              >
+                <option value="">
+                  {loadingSubcategories
+                    ? "Loading..."
+                    : !formData.category_id
+                      ? "Select Category first"
+                      : `Select Subcategory (${subcategories.length} found)`}
                 </option>
-              ))}
-            </select>
+                {subcategories.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.subcategory_name}
+                  </option>
+                ))}
+              </select>
+              {formErrors.subcategory_id && (
+                <p
+                  id="subcategory-error"
+                  className="text-red-500 text-sm mt-1"
+                >
+                  {formErrors.subcategory_id}
+                </p>
+              )}
+            </div>
 
-            <select
-              name="subcategory_id"
-              value={formData.subcategory_id}
-              onChange={handleChange}
-              className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
-              required
-              disabled={loadingSubcategories || !formData.category_id}
-            >
-              <option value="">
-                {loadingSubcategories
-                  ? "Loading..."
-                  : !formData.category_id
-                    ? "Select Category first"
-                    : `Select Subcategory (${subcategories.length} found)`}
-              </option>
-              {subcategories.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.subcategory_name}
-                </option>
-              ))}
-            </select>
+            <div>
+              <input
+                name="test_url"
+                placeholder="Test URL (https://...)"
+                value={formData.test_url}
+                onChange={handleChange}
+                className={`border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-300 w-full ${
+                  formErrors.test_url ? "border-red-500" : ""
+                }`}
+                aria-invalid={!!formErrors.test_url}
+                aria-describedby={
+                  formErrors.test_url ? "test-url-error" : undefined
+                }
+              />
+              {formErrors.test_url && (
+                <p id="test-url-error" className="text-red-500 text-sm mt-1">
+                  {formErrors.test_url}
+                </p>
+              )}
+            </div>
 
-            <input
-              name="test_url"
-              placeholder="Test URL (https://...)"
-              value={formData.test_url}
-              onChange={handleChange}
-              className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
-              required
-            />
-
-            <input
-              name="preview_url"
-              placeholder="YouTube URL (https://...)"
-              value={formData.preview_url}
-              onChange={handleChange}
-              className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
-              required
-            />
+            <div>
+              <input
+                name="preview_url"
+                placeholder="YouTube URL (https://...)"
+                value={formData.preview_url}
+                onChange={handleChange}
+                className={`border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-300 w-full ${
+                  formErrors.preview_url ? "border-red-500" : ""
+                }`}
+                aria-invalid={!!formErrors.preview_url}
+                aria-describedby={
+                  formErrors.preview_url ? "preview-url-error" : undefined
+                }
+              />
+              {formErrors.preview_url && (
+                <p
+                  id="preview-url-error"
+                  className="text-red-500 text-sm mt-1"
+                >
+                  {formErrors.preview_url}
+                </p>
+              )}
+            </div>
           </div>
 
           <button
             type="submit"
-            className="bg-green-500 hover:bg-green-600 text-white px-6 py-2 mt-4 rounded transition"
+            disabled={isSubmitting}
+            className="bg-green-500 hover:bg-green-600 text-white px-6 py-2 mt-4 rounded transition disabled:opacity-50"
           >
-            {editingId ? "Update Test" : "Add Test"}
+            {isSubmitting
+              ? "Saving..."
+              : editingId
+                ? "Update Test"
+                : "Add Test"}
           </button>
         </form>
       )}
 
-      <input
-        type="text"
-        placeholder="Search tests, courses, categories, subcategories..."
-        className="border p-2 mb-4 w-full rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-      />
+      <div className="mb-6 space-y-4">
+        <div className="grid md:grid-cols-2 gap-4">
+          <input
+            type="text"
+            placeholder="Search tests, categories, subcategories..."
+            className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+
+          <button
+            onClick={clearFilters}
+            className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded transition"
+          >
+            Clear Filters
+          </button>
+        </div>
+      </div>
 
       <div className="overflow-x-auto bg-white shadow rounded">
         <table className="w-full">
           <thead className="bg-gray-100">
             <tr>
+              <th className="p-3">S.No</th>
               <th className="p-3 text-left">Test</th>
-              <th className="p-3 text-left">Exam</th>
               <th className="p-3 text-left">Category</th>
               <th className="p-3 text-left">Subcategory</th>
               <th className="p-3 text-left">Links</th>
@@ -594,10 +659,10 @@ function Tests() {
                 </td>
               </tr>
             ) : (
-              filteredTests.map((test) => (
+              filteredTests.map((test, index) => (
                 <tr key={test.id} className="border-t hover:bg-gray-50">
+                  <td className="p-3">{index + 1}</td>
                   <td className="p-3">{test.test_name}</td>
-                  <td className="p-3">{test.course_name || "—"}</td>
                   <td className="p-3">{test.category_name || "—"}</td>
                   <td className="p-3">{test.subcategory_name || "—"}</td>
                   <td className="p-3">
@@ -607,7 +672,7 @@ function Tests() {
                           href={test.test_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          aria-label="Open test"
+                          aria-label={`Open test: ${test.test_name}`}
                           className="text-blue-600 hover:text-blue-800"
                         >
                           <ExternalLink size={20} />
@@ -618,7 +683,7 @@ function Tests() {
                           href={test.preview_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          aria-label="Open preview"
+                          aria-label={`Open preview for: ${test.test_name}`}
                           className="text-blue-600 hover:text-blue-800"
                         >
                           <ExternalLink size={20} />
@@ -650,6 +715,12 @@ function Tests() {
           </tbody>
         </table>
       </div>
+
+      {!loadingTests && filteredTests.length > 0 && (
+        <div className="mt-4 text-sm text-gray-600">
+          Showing {filteredTests.length} of {tests.length} tests
+        </div>
+      )}
     </div>
   );
 }

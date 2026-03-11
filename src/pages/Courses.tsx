@@ -176,6 +176,8 @@ export default function Courses() {
 
   /* ================= LOAD SUB‑CATEGORIES ================= */
   const loadSubCategories = async (category_ids: string[]) => {
+    console.log("Loading subcategories for categories:", category_ids);
+    
     if (!category_ids || category_ids.length === 0) {
       setAvailableSubCategories([]);
       return;
@@ -187,19 +189,25 @@ export default function Courses() {
       const allSubCategories: SubCategory[] = [];
 
       for (const category_id of category_ids) {
+        console.log(`Fetching subcategories for category_id: ${category_id}`);
         const res = await axios.get(
           `${API}/get_subCategory.php?action=list&category_id=${category_id}`,
         );
+        console.log(`Response for category ${category_id}:`, res.data);
+        
         if (res.data.data) {
           allSubCategories.push(...res.data.data);
         }
       }
+
+      console.log("All subcategories before dedup:", allSubCategories);
 
       // Remove duplicates based on id
       const uniqueSubCategories = allSubCategories.filter(
         (sub, index, self) => index === self.findIndex((s) => s.id === sub.id),
       );
 
+      console.log("Unique subcategories:", uniqueSubCategories);
       setAvailableSubCategories(uniqueSubCategories);
     } catch (err) {
       console.error("Failed to load subcategories", err);
