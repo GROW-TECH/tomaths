@@ -2,13 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import {
   AlertCircle,
   BookOpen,
-  
   Shield,
   Loader,
   ChevronDown,
   ChevronRight,
   FolderOpen,
   FileText,
+  X,
 } from "lucide-react";
 
 interface User {
@@ -39,6 +39,10 @@ export default function TestSeriesPage() {
   const [securityWarning, setSecurityWarning] = useState<string | null>(null);
   const [startingTestId, setStartingTestId] = useState<number | null>(null);
   const [startedTests, setStartedTests] = useState<Set<number>>(new Set());
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
+  const [dataValidationErrors, setDataValidationErrors] = useState<string[]>(
+    [],
+  );
 
   // Category expanded state
   const [expandedCategories, setExpandedCategories] = useState<Set<number>>(
@@ -48,7 +52,61 @@ export default function TestSeriesPage() {
     Set<string>
   >(new Set());
 
-  // Group tests by category and subcategory with IDs
+  // Validate test data grouping
+  const validateTestGrouping = useCallback((testsToValidate: Test[]) => {
+    const errors: string[] = [];
+    const combinations = new Map();
+
+    testsToValidate.forEach((test) => {
+      // Check for missing data
+      if (!test.category_id) {
+        errors.push(`Test ${test.id} (${test.test_name}) has no category_id`);
+      }
+      if (!test.subcategory_id) {
+        errors.push(
+          `Test ${test.id} (${test.test_name}) has no subcategory_id`,
+        );
+      }
+      if (!test.category_name) {
+        errors.push(`Test ${test.id} (${test.test_name}) has no category_name`);
+      }
+      if (!test.subcategory_name) {
+        errors.push(
+          `Test ${test.id} (${test.test_name}) has no subcategory_name`,
+        );
+      }
+
+      // Check for consistent category/subcategory combinations
+      const key = `${test.category_id}-${test.subcategory_id}`;
+      if (!combinations.has(key)) {
+        combinations.set(key, {
+          category_name: test.category_name,
+          subcategory_name: test.subcategory_name,
+        });
+      } else {
+        const existing = combinations.get(key);
+        if (existing.category_name !== test.category_name) {
+          errors.push(
+            `Inconsistent category name for combo ${key}: "${existing.category_name}" vs "${test.category_name}"`,
+          );
+        }
+        if (existing.subcategory_name !== test.subcategory_name) {
+          errors.push(
+            `Inconsistent subcategory name for combo ${key}: "${existing.subcategory_name}" vs "${test.subcategory_name}"`,
+          );
+        }
+      }
+    });
+
+    if (errors.length > 0) {
+      console.warn("Data validation errors:", errors);
+      setDataValidationErrors(errors);
+    } else {
+      setDataValidationErrors([]);
+    }
+  }, []);
+
+  // Group tests by category and subcategory with explicit validation
   const groupedTests = useCallback(() => {
     const groups = new Map<
       number,
@@ -67,6 +125,15 @@ export default function TestSeriesPage() {
     >();
 
     tests.forEach((test) => {
+      // Skip tests with missing category/subcategory data
+      if (!test.category_id || !test.subcategory_id) {
+        console.warn(
+          "Skipping test with missing category/subcategory data:",
+          test,
+        );
+        return;
+      }
+
       // Get or create category
       if (!groups.has(test.category_id)) {
         groups.set(test.category_id, {
@@ -78,7 +145,15 @@ export default function TestSeriesPage() {
 
       const categoryGroup = groups.get(test.category_id)!;
 
-      // Get or create subcategory
+      // Verify category name matches (data consistency check)
+      if (categoryGroup.name !== test.category_name) {
+        console.warn(`Category name mismatch for ID ${test.category_id}:`, {
+          stored: categoryGroup.name,
+          new: test.category_name,
+        });
+      }
+
+      // Get or create subcategory - this ensures tests are grouped by subcategory_id
       if (!categoryGroup.subcategories.has(test.subcategory_id)) {
         categoryGroup.subcategories.set(test.subcategory_id, {
           id: test.subcategory_id,
@@ -87,8 +162,32 @@ export default function TestSeriesPage() {
         });
       }
 
-      // Add test to subcategory
-      categoryGroup.subcategories.get(test.subcategory_id)!.tests.push(test);
+      const subcategory = categoryGroup.subcategories.get(test.subcategory_id);
+
+      // Verify subcategory name matches (data consistency check)
+      if (subcategory && subcategory.name !== test.subcategory_name) {
+        console.warn(
+          `Subcategory name mismatch for ID ${test.subcategory_id}:`,
+          {
+            stored: subcategory.name,
+            new: test.subcategory_name,
+          },
+        );
+      }
+
+      // Add test to subcategory - tests are only added if they match both category AND subcategory
+      if (subcategory) {
+        subcategory.tests.push(test);
+      }
+    });
+
+    // Sort tests within each subcategory
+    groups.forEach((category) => {
+      category.subcategories.forEach((subcategory) => {
+        subcategory.tests.sort((a, b) =>
+          a.test_name.localeCompare(b.test_name),
+        );
+      });
     });
 
     return groups;
@@ -121,33 +220,140 @@ export default function TestSeriesPage() {
   };
 
   // Reset function for debugging stuck test states
-  const resetTestState = () => {
-    console.log("Resetting test state...");
-    setStartedTests(new Set());
-    setSecurityWarning(null);
-    setExpandedCategories(new Set());
-    setExpandedSubcategories(new Set());
-    // Reload tests
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      const userData = JSON.parse(storedUser);
-      const urlParams = new URLSearchParams(window.location.search);
-      const courseId = urlParams.get("course");
-      loadTests(userData.id, courseId ? parseInt(courseId) : null);
+  // const resetTestState = () => {
+  //   console.log("Resetting test state...");
+  //   setStartedTests(new Set());
+  //   setSecurityWarning(null);
+  //   setFullscreenError(null);
+  //   setExpandedCategories(new Set());
+  //   setExpandedSubcategories(new Set());
+  //   setDataValidationErrors([]);
+  //   // Reload tests
+  //   const storedUser = localStorage.getItem("user");
+  //   if (storedUser) {
+  //     const userData = JSON.parse(storedUser);
+  //     const urlParams = new URLSearchParams(window.location.search);
+  //     const courseId = urlParams.get("course");
+  //     loadTests(userData.id, courseId ? parseInt(courseId) : null);
+  //   }
+  // };
+
+  /* ================= FULLSCREEN FUNCTIONS ================= */
+  const enterFullscreen = useCallback(async () => {
+    if (DEV_MODE) return;
+
+    try {
+      const elem = document.documentElement;
+
+      // Check if we're already in fullscreen
+      if (document.fullscreenElement) {
+        console.log("Already in fullscreen mode");
+        return true;
+      }
+
+      // Request fullscreen with error handling
+      if (elem.requestFullscreen) {
+        await elem.requestFullscreen();
+        console.log("Fullscreen mode activated");
+        return true;
+      }
+      // @ts-ignore - Safari support
+      else if (elem.webkitRequestFullscreen) {
+        // @ts-ignore
+        await elem.webkitRequestFullscreen();
+        console.log("Fullscreen mode activated (Safari)");
+        return true;
+      }
+      // @ts-ignore - Firefox/IE support
+      else if (elem.msRequestFullscreen) {
+        // @ts-ignore
+        await elem.msRequestFullscreen();
+        console.log("Fullscreen mode activated (IE/Edge)");
+        return true;
+      }
+      // @ts-ignore - Mozilla support
+      else if (elem.mozRequestFullScreen) {
+        // @ts-ignore
+        await elem.mozRequestFullScreen();
+        console.log("Fullscreen mode activated (Firefox)");
+        return true;
+      } else {
+        console.warn("Fullscreen API not supported");
+        setFullscreenError(
+          "Your browser doesn't support fullscreen mode. Some features may be limited.",
+        );
+        return false;
+      }
+    } catch (error) {
+      console.error("Fullscreen request failed:", error);
+
+      // Handle specific error types
+      if (error instanceof Error) {
+        if (error.name === "NotAllowedError") {
+          setFullscreenError(
+            "Fullscreen was blocked. Please click 'Allow' when prompted.",
+          );
+        } else if (
+          error.name === "NotFoundError" ||
+          error.name === "TypeError"
+        ) {
+          setFullscreenError(
+            "Unable to enter fullscreen mode. Please try again.",
+          );
+        } else {
+          setFullscreenError(
+            "Failed to enter fullscreen mode. Please ensure you interact with the page first.",
+          );
+        }
+      }
+      return false;
     }
-  };
+  }, []);
+
+  const exitFullscreen = useCallback(() => {
+    if (DEV_MODE) return;
+
+    try {
+      if (document.fullscreenElement) {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+        // @ts-ignore
+        else if (document.webkitExitFullscreen) {
+          // @ts-ignore
+          document.webkitExitFullscreen();
+        }
+        // @ts-ignore
+        else if (document.msExitFullscreen) {
+          // @ts-ignore
+          document.msExitFullscreen();
+        }
+        // @ts-ignore
+        else if (document.mozCancelFullScreen) {
+          // @ts-ignore
+          document.mozCancelFullScreen();
+        }
+      }
+    } catch (error) {
+      console.error("Exit fullscreen failed:", error);
+    }
+  }, []);
 
   /* ================= CLOSE TEST ================= */
-  const closeTest = useCallback((reason?: string) => {
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
-    }
-    if (reason) {
-      setSecurityWarning(reason);
-      setTimeout(() => setSecurityWarning(null), 5000);
-    }
-    setSelectedTest(null);
-  }, []);
+  const closeTest = useCallback(
+    (reason?: string) => {
+      exitFullscreen();
+
+      if (reason) {
+        setSecurityWarning(reason);
+        setTimeout(() => setSecurityWarning(null), 5000);
+      }
+
+      setSelectedTest(null);
+      setFullscreenError(null);
+    },
+    [exitFullscreen],
+  );
 
   /* ================= SECURITY EFFECTS ================= */
   // Disable text selection globally
@@ -164,32 +370,27 @@ export default function TestSeriesPage() {
 
   // Block ESC key during test
   useEffect(() => {
-    if (!selectedTest) return;
+    if (!selectedTest || DEV_MODE) return;
+
     const esc = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
       }
     };
+
     window.addEventListener("keydown", esc, true);
     return () => window.removeEventListener("keydown", esc, true);
   }, [selectedTest]);
 
-  const enterFullscreen = () => {
-    if (DEV_MODE) return;
-    try {
-      document.documentElement.requestFullscreen();
-    } catch (error) {
-      console.error("Fullscreen request failed:", error);
-    }
-  };
-
   // Tab switch detection
   useEffect(() => {
     if (!selectedTest || DEV_MODE) return;
+
     const visibilityHandler = () => {
       if (document.hidden) closeTest("Test closed: Tab switch detected");
     };
+
     document.addEventListener("visibilitychange", visibilityHandler);
     return () =>
       document.removeEventListener("visibilitychange", visibilityHandler);
@@ -198,18 +399,30 @@ export default function TestSeriesPage() {
   // Fullscreen exit detection
   useEffect(() => {
     if (!selectedTest || DEV_MODE) return;
+
     const fullscreenHandler = () => {
-      if (!document.fullscreenElement)
+      if (!document.fullscreenElement && selectedTest) {
         closeTest("Test closed: Fullscreen exited");
+      }
     };
+
     document.addEventListener("fullscreenchange", fullscreenHandler);
-    return () =>
+    document.addEventListener("webkitfullscreenchange", fullscreenHandler);
+    document.addEventListener("mozfullscreenchange", fullscreenHandler);
+    document.addEventListener("MSFullscreenChange", fullscreenHandler);
+
+    return () => {
       document.removeEventListener("fullscreenchange", fullscreenHandler);
+      document.removeEventListener("webkitfullscreenchange", fullscreenHandler);
+      document.removeEventListener("mozfullscreenchange", fullscreenHandler);
+      document.removeEventListener("MSFullscreenChange", fullscreenHandler);
+    };
   }, [selectedTest, closeTest]);
 
   // Block keyboard shortcuts and right-click
   useEffect(() => {
     if (DEV_MODE) return;
+
     const blockKeys = (e: KeyboardEvent) => {
       if (e.key === "F12") {
         e.preventDefault();
@@ -233,12 +446,15 @@ export default function TestSeriesPage() {
         if (selectedTest) closeTest("Test closed: Screenshot attempt detected");
       }
     };
+
     const blockRightClick = (e: MouseEvent) => {
       e.preventDefault();
       return false;
     };
+
     window.addEventListener("keydown", blockKeys, true);
     document.addEventListener("contextmenu", blockRightClick, true);
+
     return () => {
       window.removeEventListener("keydown", blockKeys, true);
       document.removeEventListener("contextmenu", blockRightClick, true);
@@ -248,13 +464,16 @@ export default function TestSeriesPage() {
   // Block copy/paste/cut
   useEffect(() => {
     if (DEV_MODE) return;
+
     const disableClipboard = (e: ClipboardEvent) => {
       e.preventDefault();
       return false;
     };
+
     window.addEventListener("copy", disableClipboard, true);
     window.addEventListener("cut", disableClipboard, true);
     window.addEventListener("paste", disableClipboard, true);
+
     return () => {
       window.removeEventListener("copy", disableClipboard, true);
       window.removeEventListener("cut", disableClipboard, true);
@@ -265,31 +484,27 @@ export default function TestSeriesPage() {
   // DevTools detection via window size
   useEffect(() => {
     if (!selectedTest || DEV_MODE) return;
+
     const detectSize = () => {
       const widthThreshold = window.outerWidth - window.innerWidth > 160;
       const heightThreshold = window.outerHeight - window.innerHeight > 160;
       if (widthThreshold || heightThreshold)
         closeTest("Test closed: DevTools detected");
     };
-    const detectDebugger = () => {
-      const start = performance.now();
-      // @ts-ignore
-      debugger;
-      if (performance.now() - start > 100)
-        closeTest("Test closed: Debugger detected");
-    };
+
     const sizeInterval = setInterval(detectSize, 1000);
-    const debugInterval = setInterval(detectDebugger, 2000);
+
     return () => {
       clearInterval(sizeInterval);
-      clearInterval(debugInterval);
     };
   }, [selectedTest, closeTest]);
 
   // Window blur (focus loss)
   useEffect(() => {
     if (!selectedTest || DEV_MODE) return;
+
     const blurHandler = () => closeTest("Test closed: Window focus lost");
+
     window.addEventListener("blur", blurHandler);
     return () => window.removeEventListener("blur", blurHandler);
   }, [selectedTest, closeTest]);
@@ -297,14 +512,17 @@ export default function TestSeriesPage() {
   // Mouse leave detection
   useEffect(() => {
     if (!selectedTest || DEV_MODE) return;
+
     let mouseLeftCount = 0;
     const maxMouseLeave = 3;
+
     const mouseLeaveHandler = () => {
       mouseLeftCount++;
       if (mouseLeftCount >= maxMouseLeave) {
         closeTest(`Test closed: Mouse left screen ${maxMouseLeave} times`);
       }
     };
+
     document.addEventListener("mouseleave", mouseLeaveHandler);
     return () => document.removeEventListener("mouseleave", mouseLeaveHandler);
   }, [selectedTest, closeTest]);
@@ -328,7 +546,10 @@ export default function TestSeriesPage() {
   /* ================= LOAD USER AND TESTS ================= */
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
-    if (!storedUser) return setLoading(false);
+    if (!storedUser) {
+      setLoading(false);
+      return;
+    }
 
     const userData = JSON.parse(storedUser);
     setUser(userData);
@@ -371,6 +592,10 @@ export default function TestSeriesPage() {
 
         if (data.success) {
           console.log("Tests loaded from API:", data.tests);
+
+          // Validate the data before setting it
+          validateTestGrouping(data.tests);
+
           setTests(data.tests);
 
           const attemptedSet = new Set<number>(
@@ -383,6 +608,17 @@ export default function TestSeriesPage() {
           if (data.tests.length > 0) {
             const firstCategoryId = data.tests[0].category_id;
             setExpandedCategories(new Set([firstCategoryId]));
+
+            // Also expand first subcategory of first category
+            const firstCategoryTests = data.tests.filter(
+              (t: Test) => t.category_id === firstCategoryId,
+            );
+            if (firstCategoryTests.length > 0) {
+              const firstSubcategoryId = firstCategoryTests[0].subcategory_id;
+              setExpandedSubcategories(
+                new Set([`${firstCategoryId}-${firstSubcategoryId}`]),
+              );
+            }
           }
 
           preloadTestUrls(data.tests);
@@ -399,7 +635,7 @@ export default function TestSeriesPage() {
         setLoading(false);
       }
     },
-    [],
+    [validateTestGrouping],
   );
 
   // Preload test URLs for faster startup
@@ -437,9 +673,8 @@ export default function TestSeriesPage() {
     if (!user) return;
 
     if (DEV_MODE) {
-      console.log("DEV_MODE: Bypassing attempted test check");
+      console.log("DEV_MODE: Bypassing security features");
       setSelectedTest(test);
-      setTimeout(enterFullscreen, 200);
       return;
     }
 
@@ -463,6 +698,7 @@ export default function TestSeriesPage() {
 
     setStartingTestId(test.id);
     setSecurityWarning(null);
+    setFullscreenError(null);
 
     try {
       const maxRetries = 2;
@@ -512,8 +748,20 @@ export default function TestSeriesPage() {
           prev.map((t) => (t.id === test.id ? { ...t, attempted: true } : t)),
         );
 
+        // First set the selected test
         setSelectedTest(test);
-        setTimeout(enterFullscreen, 200);
+
+        // Then try to enter fullscreen after a short delay
+        // This ensures the DOM is updated before fullscreen request
+        setTimeout(async () => {
+          const success = await enterFullscreen();
+          if (!success) {
+            // If fullscreen fails, show warning but keep test open
+            setFullscreenError(
+              "Failed to enter fullscreen mode. Please ensure you're interacting with the page.",
+            );
+          }
+        }, 200);
       } else {
         setSecurityWarning(data.message || "Unable to start test.");
       }
@@ -552,7 +800,7 @@ export default function TestSeriesPage() {
   if (!user)
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white shadow-lg rounded-lg p-8 text-center">
+        <div className="bg-white shadow-lg rounded-lg p-8 text-center max-w-md">
           <AlertCircle size={48} className="mx-auto text-red-500 mb-4" />
           <h2 className="text-xl font-bold mb-2">Authentication Required</h2>
           <p className="text-gray-600">Please login to access your tests</p>
@@ -568,15 +816,61 @@ export default function TestSeriesPage() {
     return (catA?.name || "").localeCompare(catB?.name || "");
   });
 
+  // Calculate total tests
+  // const totalTests = tests.length;
+  // const attemptedCount = startedTests.size;
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-6xl mx-auto">
+        {/* Security Warning Toast */}
         {securityWarning && (
           <div className="fixed top-4 right-4 left-4 md:left-auto md:w-96 bg-red-600 text-white p-4 rounded-lg shadow-lg z-50 animate-pulse">
             <div className="flex items-center gap-2">
               <AlertCircle size={20} />
               <span className="font-semibold">{securityWarning}</span>
             </div>
+          </div>
+        )}
+
+        {/* Fullscreen Error Toast */}
+        {fullscreenError && !securityWarning && (
+          <div className="fixed top-4 right-4 left-4 md:left-auto md:w-96 bg-yellow-600 text-white p-4 rounded-lg shadow-lg z-50">
+            <div className="flex items-center gap-2">
+              <AlertCircle size={20} />
+              <span className="font-semibold">{fullscreenError}</span>
+            </div>
+            <button
+              onClick={() => setFullscreenError(null)}
+              className="absolute top-2 right-2 text-white hover:text-yellow-100"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
+        {/* Data Validation Errors Toast (only in DEV_MODE) */}
+        {DEV_MODE && dataValidationErrors.length > 0 && (
+          <div className="fixed top-4 right-4 left-4 md:left-auto md:w-96 bg-orange-600 text-white p-4 rounded-lg shadow-lg z-50">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertCircle size={20} />
+              <span className="font-semibold">
+                Data Validation Errors ({dataValidationErrors.length})
+              </span>
+            </div>
+            <div className="text-xs max-h-40 overflow-y-auto">
+              {dataValidationErrors.map((error, index) => (
+                <div key={index} className="mb-1">
+                  • {error}
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setDataValidationErrors([])}
+              className="absolute top-2 right-2 text-white hover:text-orange-100"
+            >
+              <X size={16} />
+            </button>
           </div>
         )}
 
@@ -590,7 +884,7 @@ export default function TestSeriesPage() {
                 <p className="text-sm text-gray-600">Welcome, {user.name}</p>
               </div>
             </div>
-            <div className="flex items-center gap-4">
+            {/* <div className="flex items-center gap-4">
               {DEV_MODE && (
                 <button
                   onClick={resetTestState}
@@ -601,10 +895,13 @@ export default function TestSeriesPage() {
               )}
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Shield size={20} className="text-green-600" />
-                <span>Secure Mode Active</span>
+                <span>Secure Mode {DEV_MODE ? "(Dev)" : "Active"}</span>
               </div>
-            </div>
+            </div> */}
           </div>
+
+          {/* Progress Summary */}
+         
         </div>
 
         {/* Security Notice */}
@@ -642,6 +939,18 @@ export default function TestSeriesPage() {
                 category.subcategories.entries(),
               ).sort(([, a], [, b]) => a.name.localeCompare(b.name));
 
+              // Calculate category stats
+              // const categoryTotalTests = Array.from(
+              //   category.subcategories.values(),
+              // ).reduce((acc, sub) => acc + sub.tests.length, 0);
+              // const categoryAttempted = Array.from(
+              //   category.subcategories.values(),
+              // ).reduce(
+              //   (acc, sub) =>
+              //     acc + sub.tests.filter((t) => startedTests.has(t.id)).length,
+              //   0,
+              // );
+
               return (
                 <div
                   key={categoryId}
@@ -663,16 +972,14 @@ export default function TestSeriesPage() {
                         <span className="font-semibold text-lg">
                           {category.name}
                         </span>
+                        {/* <span className="text-sm px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full">
+                          {categoryAttempted}/{categoryTotalTests} attempted
+                        </span> */}
                       </div>
-                      <span className="text-sm text-gray-500">
-                        (
-                        {Array.from(category.subcategories.values()).reduce(
-                          (acc, sub) => acc + sub.tests.length,
-                          0,
-                        )}{" "}
-                        tests)
-                      </span>
                     </div>
+                    <span className="text-sm text-gray-500">
+                      {category.subcategories.size} subcategories
+                    </span>
                   </button>
 
                   {/* Subcategories */}
@@ -680,6 +987,10 @@ export default function TestSeriesPage() {
                     <div className="p-4 space-y-3">
                       {subcategories.map(([subId, subcategory]) => {
                         const subcategoryKey = `${categoryId}-${subId}`;
+                        // const subAttempted = subcategory.tests.filter((t) =>
+                        //   startedTests.has(t.id),
+                        // ).length;
+
                         return (
                           <div
                             key={subcategoryKey}
@@ -707,11 +1018,15 @@ export default function TestSeriesPage() {
                                   <span className="font-medium">
                                     {subcategory.name}
                                   </span>
+                                  {/* <span className="text-xs px-2 py-0.5 bg-gray-200 text-gray-700 rounded-full">
+                                    {subAttempted}/{subcategory.tests.length}{" "}
+                                    attempted
+                                  </span> */}
                                 </div>
-                                <span className="text-sm text-gray-500">
-                                  ({subcategory.tests.length} tests)
-                                </span>
                               </div>
+                              <span className="text-sm text-gray-500">
+                                {subcategory.tests.length} tests
+                              </span>
                             </button>
 
                             {/* Tests Grid */}
@@ -722,9 +1037,16 @@ export default function TestSeriesPage() {
                                     key={test.id}
                                     className="bg-white border rounded-lg overflow-hidden hover:shadow-md transition-shadow"
                                   >
+                                    {/* Add breadcrumb to show full hierarchy */}
+                                    {/* <div className="bg-gray-50 px-3 py-1 border-b text-xs text-gray-500 flex items-center gap-1">
+                                      <span className="text-blue-600">{test.category_name}</span>
+                                      <span>›</span>
+                                      <span className="text-green-600">{test.subcategory_name}</span>
+                                    </div> */}
+
                                     <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-3">
                                       <h3 className="font-semibold text-base">
-                                        {test.test_name}
+                                        {/* {test.test_name} */}
                                       </h3>
                                       <p className="text-xs text-blue-100 mt-1">
                                         Created:{" "}
@@ -734,20 +1056,6 @@ export default function TestSeriesPage() {
                                       </p>
                                     </div>
                                     <div className="p-4">
-                                      <div className="flex flex-col gap-1 mb-3 text-xs">
-                                        <div className="flex items-center gap-2 text-gray-600">
-                                          <span className="font-medium">
-                                            Category:
-                                          </span>
-                                          <span>{test.category_name}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-gray-600">
-                                          <span className="font-medium">
-                                            Subcategory:
-                                          </span>
-                                          <span>{test.subcategory_name}</span>
-                                        </div>
-                                      </div>
                                       <div className="flex items-center gap-2 text-xs text-gray-600 mb-3">
                                         <Shield
                                           size={14}
@@ -764,7 +1072,9 @@ export default function TestSeriesPage() {
                                         className={`w-full py-2 px-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 text-sm ${
                                           startedTests.has(test.id)
                                             ? "bg-gray-400 cursor-not-allowed"
-                                            : "bg-blue-600 hover:bg-blue-700 text-white"
+                                            : startingTestId === test.id
+                                              ? "bg-blue-500 cursor-wait"
+                                              : "bg-blue-600 hover:bg-blue-700 text-white"
                                         }`}
                                       >
                                         {startedTests.has(test.id) ? (
@@ -811,19 +1121,25 @@ export default function TestSeriesPage() {
             style={{ userSelect: "none" }}
           >
             <div className="bg-white w-full h-full flex flex-col">
-              <div className="flex justify-between items-center p-4 border-b bg-gray-50">
-                {/* <div className="flex items-center gap-3">
-                  {/* <Shield size={20} className="text-green-600" /> */}
-                {/* <div> */}
-                {/* <h2 className="font-bold text-lg truncate">
-                      {/* {selectedTest.test_name} */}
-                {/* </h2> */}
-                {/* <div className="flex items-center gap-4 text-xs text-gray-600 mt-1"> */}
-                {/* <span>Category: {selectedTest.category_name}</span>
-                      <span>Subcategory: {selectedTest.subcategory_name}</span> */}
-                {/* </div> */}
-                {/* </div> */}
-                {/* </div> */}
+              {/* Optional header showing category and subcategory */}
+              {/* <div className="flex justify-between items-center p-4 border-b bg-gray-50"> */}
+              {/* <div className="flex items-center gap-3">
+                  <Shield size={20} className="text-green-600" />
+                  <div>
+                    <h2 className="font-bold text-lg truncate max-w-md">
+                      {selectedTest.test_name}
+                    </h2>
+                    <div className="flex items-center gap-2 text-xs text-gray-600 mt-1">
+                      <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded">
+                        {selectedTest.category_name}
+                      </span>
+                      <span>›</span>
+                      <span className="px-2 py-0.5 bg-green-100 text-green-800 rounded">
+                        {selectedTest.subcategory_name}
+                      </span>
+                    </div>
+                  </div> */}
+              {/* </div>
                 <button
                   onClick={() => {
                     if (
@@ -837,9 +1153,10 @@ export default function TestSeriesPage() {
                   className="p-2 hover:bg-gray-200 rounded-full transition-colors"
                   title="Exit Test"
                 >
-                  {/* <X size={24} /> */}
+                  <X size={24} />
                 </button>
-              </div>
+              </div> */}
+
               <div className="flex-1 relative bg-white">
                 <iframe
                   src={selectedTest.test_url}
@@ -856,15 +1173,13 @@ export default function TestSeriesPage() {
                   onLoad={() => {
                     console.log("Test iframe loaded successfully");
                   }}
-                  onLoadStart={() => {
-                    console.log("Starting to load test iframe");
-                  }}
                 />
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div
-                    className="text-center opacity-0 transition-opacity duration-300"
-                    id="iframe-loading"
-                  >
+                <div
+                  className="absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-300"
+                  id="iframe-loading"
+                  style={{ opacity: 1 }}
+                >
+                  <div className="text-center bg-white bg-opacity-90 p-4 rounded-lg">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
                     <p className="text-gray-600 text-sm">Loading test...</p>
                   </div>

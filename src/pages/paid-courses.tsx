@@ -421,62 +421,6 @@ export default function PaidCoursesPage() {
       });
   };
 
-  /* ================= BLOCK SCREENSHOT & DEVTOOLS ================= */
-  useEffect(() => {
-    // Block right-click
-    const blockRightClick = (e: MouseEvent) => {
-      e.preventDefault();
-      return false;
-    };
-
-    // Block keyboard shortcuts (like PrintScreen and DevTools shortcuts)
-    const blockKeys = (e: KeyboardEvent) => {
-      // F12 (DevTools)
-      if (e.key === "F12") {
-        e.preventDefault();
-        return false;
-      }
-      // Ctrl+Shift+I, J, C (DevTools)
-      if (e.ctrlKey && e.shiftKey && ["I", "J", "C"].includes(e.key)) {
-        e.preventDefault();
-        return false;
-      }
-      // Ctrl+U (View Source), Ctrl+S (Save), Ctrl+P (Print)
-      if (e.ctrlKey && ["u", "s", "p"].includes(e.key.toLowerCase())) {
-        e.preventDefault();
-        return false;
-      }
-      // PrintScreen
-      if (e.key === "PrintScreen") {
-        e.preventDefault();
-        navigator.clipboard.writeText("").catch(() => {});
-        setMessage("Screenshot attempt blocked");
-        setMessageType("error");
-      }
-    };
-
-    // Detect DevTools (by window size change)
-    const detectDevTools = () => {
-      const widthThreshold = window.outerWidth - window.innerWidth > 160;
-      const heightThreshold = window.outerHeight - window.innerHeight > 160;
-      if (widthThreshold || heightThreshold) {
-        setMessage("DevTools detected, blocking the page");
-        setMessageType("error");
-      }
-    };
-
-    // Attach listeners
-    window.addEventListener("contextmenu", blockRightClick, true);
-    window.addEventListener("keydown", blockKeys, true);
-    window.addEventListener("resize", detectDevTools, true);
-
-    // Clean up listeners
-    return () => {
-      window.removeEventListener("contextmenu", blockRightClick, true);
-      window.removeEventListener("keydown", blockKeys, true);
-      window.removeEventListener("resize", detectDevTools, true);
-    };
-  }, []);
 
   /* ================= LOADING STATE ================= */
   if (loading) {
