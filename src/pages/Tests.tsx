@@ -90,7 +90,8 @@ const handleApiError = (error: unknown): string => {
 function Tests() {
   const [tests, setTests] = useState<Test[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
+  const [allSubcategories, setAllSubcategories] = useState<Subcategory[]>([]); // Store all subcategories
+  const [filteredSubcategories, setFilteredSubcategories] = useState<Subcategory[]>([]); // Filtered by category
 
   const [loadingTests, setLoadingTests] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(false);
@@ -186,24 +187,18 @@ function Tests() {
     }
   }, []);
 
-  const loadSubcategories = useCallback(async (categoryId: string) => {
-    if (!categoryId) {
-      setSubcategories([]);
-      return;
-    }
-
+  // Load ALL subcategories once
+  const loadAllSubcategories = useCallback(async () => {
     setLoadingSubcategories(true);
     setError(null);
 
     const baseUrl = API_BASE_URL;
     const possibleEndpoints = [
-      `${baseUrl}/${SUBCATEGORY_ENDPOINT}?action=list&category_id=${categoryId}`,
-      `${baseUrl}/get_subcategory.php?action=list&category_id=${categoryId}`,
-      `${baseUrl}/get_subCategory.php?action=list&category_id=${categoryId}`,
-      `${baseUrl}/subcategories.php?action=list&category_id=${categoryId}`,
-      `${baseUrl}/subcategory.php?action=list&category_id=${categoryId}`,
-      `${baseUrl}/get_subCategory.php?action=list&cat_id=${categoryId}`,
-      `${baseUrl}/subcategories.php?cat_id=${categoryId}`,
+      `${baseUrl}/${SUBCATEGORY_ENDPOINT}?action=list`,
+      `${baseUrl}/get_subcategory.php?action=list`,
+      `${baseUrl}/get_subCategory.php?action=list`,
+      `${baseUrl}/subcategories.php?action=list`,
+      `${baseUrl}/subcategory.php?action=list`,
     ];
 
     const uniqueEndpoints = [...new Set(possibleEndpoints)];
@@ -230,12 +225,12 @@ function Tests() {
 
         const items = extractArray(data, ["subcategories"]);
         const mapped = items.map((item: any) => ({
-          id: item.id,
+          id: Number(item.id),
           subcategory_name: item.subcategory_name || item.name || "Unnamed",
-          category_id: item.category_id,
+          category_id: Number(item.category_id),
         }));
 
-        setSubcategories(mapped);
+        setAllSubcategories(mapped);
         setLoadingSubcategories(false);
         return;
       } catch (err) {
@@ -245,7 +240,7 @@ function Tests() {
     }
 
     console.error("All subcategory endpoints failed:", lastError);
-    setSubcategories([]);
+    setAllSubcategories([]);
     setError(`Could not load subcategories. Last error: ${lastError}`);
     setLoadingSubcategories(false);
   }, []);
@@ -253,7 +248,32 @@ function Tests() {
   useEffect(() => {
     loadTests();
     loadCategories();
-  }, [loadTests, loadCategories]);
+    loadAllSubcategories(); // Load all subcategories once
+  }, [loadTests, loadCategories, loadAllSubcategories]);
+
+  // Filter subcategories based on selected category
+  useEffect(() => {
+    if (formData.category_id) {
+      const filtered = allSubcategories.filter(
+        sub => sub.category_id === Number(formData.category_id)
+      );
+      console.log(`Filtered subcategories for category ${formData.category_id}:`, filtered);
+      setFilteredSubcategories(filtered);
+      
+      // Clear subcategory selection if current selection doesn't belong to selected category
+      if (formData.subcategory_id) {
+        const selectedSubBelongsToCategory = filtered.some(
+          sub => sub.id === Number(formData.subcategory_id)
+        );
+        if (!selectedSubBelongsToCategory) {
+          setFormData(prev => ({ ...prev, subcategory_id: "" }));
+        }
+      }
+    } else {
+      setFilteredSubcategories([]);
+      setFormData(prev => ({ ...prev, subcategory_id: "" }));
+    }
+  }, [formData.category_id, allSubcategories]);
 
   // ================= VALIDATION =================
   const validateForm = (): boolean => {
@@ -299,16 +319,7 @@ function Tests() {
       setFormErrors((prev) => ({ ...prev, [name]: undefined }));
     }
 
-    if (name === "category_id") {
-      loadSubcategories(value);
-      setFormData((prev) => ({
-        ...prev,
-        category_id: value,
-        subcategory_id: "",
-      }));
-    } else {
-      setFormData((prev) => ({ ...prev, [name]: value }));
-    }
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const resetForm = () => {
@@ -320,7 +331,7 @@ function Tests() {
       subcategory_id: "",
     });
     setFormErrors({});
-    setSubcategories([]);
+    setFilteredSubcategories([]);
     setEditingId(null);
     setShowForm(false);
   };
@@ -328,8 +339,7 @@ function Tests() {
   const handleEdit = async (test: Test) => {
     setError(null);
     if (categories.length === 0) await loadCategories();
-    if (test.category_id) await loadSubcategories(test.category_id.toString());
-
+    
     setFormData({
       test_name: test.test_name,
       test_url: test.test_url,
@@ -535,9 +545,11 @@ function Tests() {
                     ? "Loading..."
                     : !formData.category_id
                       ? "Select Category first"
-                      : `Select Subcategory (${subcategories.length} found)`}
+                      : filteredSubcategories.length === 0
+                        ? "No subcategories for this category"
+                        : `Select Subcategory (${filteredSubcategories.length} found)`}
                 </option>
-                {subcategories.map((s) => (
+                {filteredSubcategories.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.subcategory_name}
                   </option>

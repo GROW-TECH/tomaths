@@ -471,9 +471,9 @@ function SubCategoryPage() {
                         </span>
                       )}
                     </p>
-                    <p className="text-xs text-gray-400">
+                    {/* <p className="text-xs text-gray-400">
                       ID: {sub.id} | Cat ID: {sub.category_id}
-                    </p>
+                    </p> */}
 
                     <div className="flex gap-2 mt-3">
                       <button
